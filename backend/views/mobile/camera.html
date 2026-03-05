@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>手机摄像头回传</title>
+  <style>
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:16px;background:#f5f7fa;color:#222}
+    .card{background:#fff;border-radius:12px;padding:14px;border:1px solid #eaeaea}
+    video{width:100%;border-radius:10px;background:#000}
+    button{margin-top:10px;width:100%;height:40px;border:none;border-radius:8px;background:#07c160;color:#fff;font-size:15px}
+    .msg{font-size:12px;color:#666;margin-top:8px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h3>手机摄像头回传</h3>
+    <video id="preview" autoplay playsinline muted></video>
+    <button id="startBtn">开启并回传视频</button>
+    <div class="msg" id="msg">等待启动...</div>
+  </div>
+  <script>
+    const video = document.getElementById('preview');
+    const btn = document.getElementById('startBtn');
+    const msg = document.getElementById('msg');
+    let timer = null;
+    let stream = null;
+
+    async function uploadFrame() {
+      if (!video.videoWidth || !video.videoHeight) return;
+      const canvas = document.createElement('canvas');
+      const width = 480;
+      const height = Math.round((video.videoHeight / video.videoWidth) * width);
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, width, height);
+      const imageData = canvas.toDataURL('image/jpeg', 0.65);
+      try {
+        await fetch('/v1/live/camera-frame', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageData })
+        });
+        msg.textContent = `回传中：${new Date().toLocaleTimeString()}`;
+      } catch {
+        msg.textContent = '回传失败，请检查网络';
+      }
+    }
+
+    btn.onclick = async () => {
+      if (stream) return;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+        video.srcObject = stream;
+        btn.textContent = '已开启回传';
+        timer = setInterval(uploadFrame, 700);
+      } catch (error) {
+        msg.textContent = `摄像头打开失败：${error.message}`;
+      }
+    };
+
+    window.addEventListener('beforeunload', () => {
+      if (timer) clearInterval(timer);
+      if (stream) stream.getTracks().forEach((t) => t.stop());
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+{
+  "name": "file-transfer",
+  "version": "1.0.0",
+  "main": "backend/server.js",
+  "scripts": {
+    "server": "node backend/server.js",
+    "client": "npm --prefix frontend run dev",
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "build": "npm --prefix frontend run build",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "concurrently": "^9.2.1",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "multer": "^2.1.0",
+    "pdfkit": "^0.17.2",
+    "qrcode": "^1.5.4"
+  }
+}

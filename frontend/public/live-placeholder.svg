@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540" fill="none">
+  <rect width="960" height="540" rx="20" fill="#F2FBF6"/>
+  <rect x="48" y="48" width="864" height="444" rx="16" fill="#E7F7EF" stroke="#BFE7CF" stroke-width="2"/>
+  <circle cx="480" cy="270" r="74" fill="#07C160" fill-opacity="0.15"/>
+  <path d="M462 232C462 225.373 469.163 221.126 475.057 224.483L538.979 260.883C544.914 264.264 544.914 272.736 538.979 276.117L475.057 312.517C469.163 315.874 462 311.627 462 305V232Z" fill="#07C160"/>
+  <text x="480" y="380" text-anchor="middle" fill="#0B7A47" font-size="30" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">视频直播窗口（预留）</text>
+</svg>

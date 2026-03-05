@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>手机播控台</title>
+  <style>
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:16px;background:#f5f7fa;color:#222}
+    .card{background:#fff;border-radius:12px;padding:14px;border:1px solid #eaeaea;margin-bottom:12px}
+    .row{display:flex;gap:8px}
+    button{flex:1;height:40px;border:none;border-radius:8px;background:#07c160;color:#fff;font-size:14px}
+    .secondary{background:#3b82f6}
+    .effect-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:8px}
+    input{width:100%;height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;margin-top:8px}
+    .msg{font-size:12px;color:#666;margin-top:8px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h3>播放控制</h3>
+    <div class="row">
+      <button onclick="sendPlayback('play')">播放</button>
+      <button class="secondary" onclick="sendPlayback('pause')">暂停</button>
+    </div>
+    <div class="msg" id="playMsg">等待操作...</div>
+  </div>
+
+  <div class="card">
+    <h3>节目效果音</h3>
+    <div class="effect-grid">
+      <button onclick="sendEffect('大笑')">大笑</button>
+      <button onclick="sendEffect('拍手')">拍手</button>
+      <button onclick="sendEffect('欢呼')">欢呼</button>
+      <button onclick="sendEffect('鼓点')">鼓点</button>
+    </div>
+    <input id="customEffect" placeholder="自定义效果名称，例如：尖叫" />
+    <button style="margin-top:8px" onclick="sendCustomEffect()">触发自定义效果</button>
+    <div class="msg" id="effectMsg">等待操作...</div>
+  </div>
+
+  <script>
+    async function sendPlayback(action) {
+      const msg = document.getElementById('playMsg');
+      try {
+        await fetch('/v1/live/playback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action })
+        });
+        msg.textContent = `已发送：${action === 'play' ? '播放' : '暂停'}`;
+      } catch {
+        msg.textContent = '发送失败，请检查网络';
+      }
+    }
+
+    async function sendEffect(effectName) {
+      const msg = document.getElementById('effectMsg');
+      try {
+        await fetch('/v1/live/effect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ effectName })
+        });
+        msg.textContent = `已触发效果：${effectName}`;
+      } catch {
+        msg.textContent = '发送失败，请检查网络';
+      }
+    }
+
+    function sendCustomEffect() {
+      const input = document.getElementById('customEffect');
+      const name = String(input.value || '').trim();
+      if (!name) return;
+      sendEffect(name);
+      input.value = '';
+    }
+  </script>
+</body>
+</html>
