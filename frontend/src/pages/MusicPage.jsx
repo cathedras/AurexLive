@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Modal from '../component/Modal'
+import httpClient, { apiGet, apiPost, getRequestErrorMessage } from '../utils/http'
 
 function MusicPage() {
   const [tracks, setTracks] = useState([])
@@ -81,8 +82,7 @@ function MusicPage() {
 
   const fetchHistoryShows = async () => {
     try {
-      const response = await fetch('/v1/shows')
-      const result = await response.json()
+      const result = await apiGet('/v1/shows')
       if (!result.success) {
         throw new Error(result.message || '加载失败')
       }
@@ -94,14 +94,7 @@ function MusicPage() {
 
   const switchToHistoryShow = async (fileName) => {
     try {
-      const response = await fetch('/v1/show/current', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ fileName, clearCurrentProgram: true }),
-      })
-      const result = await response.json()
+      const result = await apiPost('/v1/show/current', { fileName, clearCurrentProgram: true })
       if (!result.success) {
         throw new Error(result.message || '切换失败')
       }
@@ -169,8 +162,7 @@ function MusicPage() {
 
   const pollLiveState = async () => {
     try {
-      const response = await fetch('/v1/live/state')
-      const result = await response.json()
+      const result = await apiGet('/v1/live/state')
       if (!result.success || !result.state) return
 
       const state = result.state
@@ -198,19 +190,13 @@ function MusicPage() {
 
   const reportClientError = async ({ message: errorMessage, stack, meta } = {}) => {
     try {
-      await fetch('/v1/client-error', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          source: 'music-page',
-          message: errorMessage || 'unknown error',
-          stack: stack || '',
-          page: window.location.pathname,
-          timestamp: new Date().toISOString(),
-          meta: meta || {},
-        }),
+      await apiPost('/v1/client-error', {
+        source: 'music-page',
+        message: errorMessage || 'unknown error',
+        stack: stack || '',
+        page: window.location.pathname,
+        timestamp: new Date().toISOString(),
+        meta: meta || {},
       })
     } catch {
       // ignore report failures
@@ -219,8 +205,7 @@ function MusicPage() {
 
   const fetchUserSettings = async () => {
     try {
-      const response = await fetch('/v1/settings')
-      const result = await response.json()
+      const result = await apiGet('/v1/settings')
       if (!result.success || !result.settings) {
         return
       }
@@ -241,8 +226,7 @@ function MusicPage() {
 
   const fetchCurrentShow = async () => {
     try {
-      const response = await fetch('/v1/show/current-state')
-      const result = await response.json()
+      const result = await apiGet('/v1/show/current-state')
 
       if (!result.success || !result.hasCurrentShow || !result.currentShow) {
         setCurrentShowName('未设置')
@@ -281,8 +265,7 @@ function MusicPage() {
 
   const fetchTracks = async () => {
     try {
-      const response = await fetch('/v1/musiclist')
-      const result = await response.json()
+      const result = await apiGet('/v1/musiclist')
       if (!result.success) {
         throw new Error(result.message || '加载失败')
       }
@@ -293,7 +276,8 @@ function MusicPage() {
         programName: item.programName,
         hostScript: item.hostScript || '',
         fileName: item.displayName || item.fileName,
-        url: item.url || '',
+        savedName: item.savedName || '',
+        playUrl: item.playUrl || '',
       }))
 
       setTracks(audioTracks)
@@ -310,22 +294,18 @@ function MusicPage() {
 
   const onPlay = async (trackId) => {
     const selectedTrack = tracks.find((track) => track.id === trackId)
-    if (!selectedTrack?.url) {
+    const savedFileName = String(selectedTrack?.savedName || '').trim()
+    let sourceFileName = String(selectedTrack?.fileName || savedFileName || '').trim()
+    if (!savedFileName) {
       setMessage('该节目暂无可播放音频，请先上传或绑定音频文件。')
       return
     }
 
     try {
       try {
-        await fetch('/v1/show/current-program', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            performer: selectedTrack.performer,
-            programName: selectedTrack.programName,
-          }),
+        await apiPost('/v1/show/current-program', {
+          performer: selectedTrack.performer,
+          programName: selectedTrack.programName,
         })
 
         setCurrentProgramName(selectedTrack.programName || '暂无节目')
@@ -341,10 +321,28 @@ function MusicPage() {
         throw new Error('播放器实例未就绪（audioRef.current 为空）')
       }
 
+      const urlResult = await apiPost('/v1/music/file-url', { fileName: savedFileName })
+      if (!urlResult.success) {
+        throw new Error(urlResult.message || '获取播放地址失败')
+      }
+
+      sourceFileName = String(urlResult.fileName || sourceFileName).trim()
+
+      const streamUrl = String(urlResult.url || '').trim()
+      if (!streamUrl) {
+        throw new Error('未找到可播放地址（url 为空）')
+      }
       const currentSrc = audioElement.currentSrc || audioElement.src || ''
-      const targetUrl = new URL(selectedTrack.url, window.location.origin).toString()
+      const targetUrl = new URL(streamUrl, window.location.origin).toString()
       if (currentSrc !== targetUrl) {
-        audioElement.src = selectedTrack.url
+        audioElement.src = streamUrl
+        console.log('[MusicPage:onPlay] 加载音频文件', {
+          trackId,
+          fileName: sourceFileName,
+          url: streamUrl,
+          currentSrc,
+          targetUrl,
+        })
         audioElement.load()
       }
 
@@ -354,7 +352,8 @@ function MusicPage() {
       const errorMessage = error?.message || '未知错误'
       console.error('[MusicPage:onPlay] 播放失败', {
         trackId,
-        url: selectedTrack.url,
+        fileName: sourceFileName,
+        savedName: savedFileName,
         errorName,
         errorMessage,
         error,
@@ -365,7 +364,8 @@ function MusicPage() {
         stack: String(error?.stack || ''),
         meta: {
           trackId,
-          url: selectedTrack.url,
+          fileName: sourceFileName,
+          savedName: savedFileName,
           errorName,
           errorMessage,
         },
@@ -487,14 +487,7 @@ function MusicPage() {
     }
 
     try {
-      const response = await fetch('/v1/ai/speech-refine-text', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ text: rawText, field }),
-      })
-      const result = await response.json()
+      const result = await apiPost('/v1/ai/speech-refine-text', { text: rawText, field })
       if (!result.success) {
         return rawText
       }
@@ -611,19 +604,11 @@ function MusicPage() {
         programName: track.programName,
         hostScript: track.hostScript || '',
         fileName: track.fileName,
-        url: track.url,
+        savedName: track.savedName || '',
       })),
     }
 
-    const response = await fetch('/v1/musiclist/save', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    })
-
-    const result = await response.json()
+    const result = await apiPost('/v1/musiclist/save', payload)
     if (!result.success) {
       throw new Error(result.message || '保存失败')
     }
@@ -672,15 +657,7 @@ function MusicPage() {
       setIsGeneratingScript(true)
       setAiSuggestions([])
 
-      const response = await fetch('/v1/ai/host-script-suggestions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ performer, programName, count: 3 }),
-      })
-
-      const result = await response.json()
+      const result = await apiPost('/v1/ai/host-script-suggestions', { performer, programName, count: 3 })
       if (!result.success) {
         throw new Error(result.message || '生成失败')
       }
@@ -719,7 +696,7 @@ function MusicPage() {
         programName,
         hostScript,
         fileName: '手动新增节目（无音频）',
-        url: '',
+        savedName: '',
       }
       nextTracks = [...tracks, newTrack]
     } else {
@@ -771,18 +748,11 @@ function MusicPage() {
           programName: track.programName,
           hostScript: track.hostScript || '',
           fileName: track.fileName,
-          url: track.url,
+          savedName: track.savedName || '',
         })),
       }
 
-      const response = await fetch('/v1/musiclist/save', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      })
-      const result = await response.json()
+      const result = await apiPost('/v1/musiclist/save', payload)
 
       if (!result.success) {
         throw new Error(result.message || '保存失败')
@@ -883,33 +853,23 @@ function MusicPage() {
   const confirmExportProgramSheetPdf = async () => {
     try {
       const recordName = exportFileName.trim() || '节目单'
-      const response = await fetch('/v1/musiclist/export-pdf', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          recordName,
-          musicList: tracks.map((track, index) => ({
-            id: track.id,
-            order: index + 1,
-            performer: track.performer,
-            programName: track.programName,
-            hostScript: track.hostScript || '',
-            fileName: track.fileName,
-            url: track.url,
-          })),
-        }),
+      const response = await httpClient.post('/v1/musiclist/export-pdf', {
+        recordName,
+        musicList: tracks.map((track, index) => ({
+          id: track.id,
+          order: index + 1,
+          performer: track.performer,
+          programName: track.programName,
+          hostScript: track.hostScript || '',
+          fileName: track.fileName,
+          savedName: track.savedName || '',
+        })),
+      }, {
+        responseType: 'blob',
       })
 
-      if (!response.ok) {
-        const text = await response.text()
-        throw new Error(text || `请求失败（${response.status}）`)
-      }
-
-      const blob = await response.blob()
-      const contentDisposition = response.headers.get('content-disposition') || ''
-      const downloadedName = getFileNameFromDisposition(contentDisposition) || `${recordName}.pdf`
+      const blob = response.data
+      const downloadedName = `${recordName}.pdf`
       const objectUrl = URL.createObjectURL(blob)
 
       const link = document.createElement('a')
@@ -923,7 +883,7 @@ function MusicPage() {
       setMessage(`PDF 导出成功：${downloadedName}`)
       closeExportDialog()
     } catch (error) {
-      setMessage(`导出 PDF 失败：${error.message}`)
+      setMessage(`导出 PDF 失败：${getRequestErrorMessage(error, '请求失败')}`)
     }
   }
 
@@ -961,7 +921,7 @@ function MusicPage() {
           ref={audioRef}
           controls
           className="music-audio"
-          src={currentTrack?.url || ''}
+          src={currentTrack?.playUrl || ''}
         />
       </div>
 
@@ -1011,7 +971,7 @@ function MusicPage() {
                       className="row-play-btn"
                       onClick={() => onPlay(track.id)}
                       type="button"
-                      disabled={!track.url}
+                      disabled={!track.savedName}
                     >
                       播放
                     </button>
@@ -1266,22 +1226,6 @@ function escapeHtml(input) {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;')
-}
-
-function getFileNameFromDisposition(disposition) {
-  if (!disposition) return ''
-
-  const utfMatch = disposition.match(/filename\*=UTF-8''([^;]+)/i)
-  if (utfMatch?.[1]) {
-    try {
-      return decodeURIComponent(utfMatch[1])
-    } catch {
-      return utfMatch[1]
-    }
-  }
-
-  const plainMatch = disposition.match(/filename="?([^";]+)"?/i)
-  return plainMatch?.[1] || ''
 }
 
 function mergeRuntimeSettings(input = {}) {

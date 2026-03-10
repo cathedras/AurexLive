@@ -83,7 +83,41 @@ function normalizeJsonFileName(inputName) {
     return null;
   }
 
-  return `${safeBaseName}.json`;
+  return `${encodeURIComponent(safeBaseName)}.json`;
+}
+
+function decodeJsonRecordName(fileName) {
+  const baseName = String(fileName || '').replace(/\.json$/i, '').trim();
+  if (!baseName) {
+    return '';
+  }
+
+  try {
+    return decodeURIComponent(baseName);
+  } catch {
+    return baseName;
+  }
+}
+
+function encodeMusicFileToken(fileName) {
+  const safeName = String(fileName || '').trim();
+  if (!safeName) {
+    return '';
+  }
+  return encodeURIComponent(safeName);
+}
+
+function decodeMusicFileToken(token) {
+  const safeToken = String(token || '').trim();
+  if (!safeToken) {
+    return '';
+  }
+
+  try {
+    return decodeURIComponent(safeToken);
+  } catch {
+    return safeToken;
+  }
 }
 
 module.exports = {
@@ -92,5 +126,8 @@ module.exports = {
   getUploadedFiles,
   isAudioFile,
   parseTrackMeta,
-  normalizeJsonFileName
+  normalizeJsonFileName,
+  decodeJsonRecordName,
+  encodeMusicFileToken,
+  decodeMusicFileToken
 };

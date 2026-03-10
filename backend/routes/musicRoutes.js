@@ -11,9 +11,13 @@ const {
 } = require('../config/paths');
 const {
   getUploadedFiles,
+  getDisplayNameFromSavedName,
   isAudioFile,
   parseTrackMeta,
-  normalizeJsonFileName
+  normalizeJsonFileName,
+  decodeJsonRecordName,
+  encodeMusicFileToken,
+  decodeMusicFileToken
 } = require('../utils/fileUtils');
 
 const router = express.Router();
@@ -23,6 +27,7 @@ function normalizeTrack(track, index = 0) {
   const programName = String(track?.programName || '').trim() || '未命名节目';
   const fileName = String(track?.fileName || track?.displayName || '').trim();
   const id = String(track?.id || track?.savedName || `custom-${Date.now()}-${index}`);
+  const savedName = String(track?.savedName || '').trim();
 
   return {
     id,
@@ -31,10 +36,9 @@ function normalizeTrack(track, index = 0) {
     hostScript: String(track?.hostScript || '').trim(),
     fileName,
     displayName: fileName,
-    savedName: String(track?.savedName || '').trim(),
+    savedName,
     size: Number(track?.size || 0),
     uploadTime: track?.uploadTime || null,
-    url: String(track?.url || '').trim(),
     order: Number(track?.order || index + 1)
   };
 }
@@ -45,17 +49,17 @@ function buildMusicListFromUploadedFiles() {
     .filter((file) => isAudioFile(file.savedName))
     .map((file, index) => {
       const trackMeta = parseTrackMeta(file.savedName);
+      const cleanFileName = getDisplayNameFromSavedName(file.savedName);
       return normalizeTrack(
         {
           id: file.savedName,
           performer: trackMeta.performer,
           programName: trackMeta.programName,
-          displayName: trackMeta.fileName,
-          fileName: trackMeta.fileName,
+          displayName: cleanFileName,
+          fileName: cleanFileName,
           savedName: file.savedName,
           size: file.size,
           uploadTime: file.uploadTime,
-          url: file.url,
           order: index + 1
         },
         index
@@ -85,7 +89,7 @@ function saveMusicListFile(fileName, musicList) {
   const normalizedList = (Array.isArray(musicList) ? musicList : []).map((item, index) => normalizeTrack(item, index));
   const output = {
     generatedAt: new Date().toISOString(),
-    recordName: fileName.replace(/\.json$/i, ''),
+    recordName: decodeJsonRecordName(fileName),
     count: normalizedList.length,
     musicList: normalizedList
   };
@@ -132,7 +136,7 @@ function writeCurrentShowState({ fileName, recordName, musicList, currentProgram
   const currentProgram = getCurrentProgramSnapshot(musicList);
   const output = {
     fileName: String(fileName || '').trim(),
-    recordName: String(recordName || '').trim() || String(fileName || '').replace(/\.json$/i, ''),
+    recordName: String(recordName || '').trim() || decodeJsonRecordName(fileName),
     currentProgramName: String(currentProgramName ?? currentProgram.programName ?? '').trim(),
     currentPerformerName: String(currentPerformerName ?? currentProgram.performer ?? '').trim(),
     updatedAt: new Date().toISOString()
@@ -155,7 +159,7 @@ function readCurrentShowState() {
 
   return {
     fileName: String(parsed.fileName),
-    recordName: String(parsed.recordName || '').trim() || String(parsed.fileName).replace(/\.json$/i, ''),
+    recordName: String(parsed.recordName || '').trim() || decodeJsonRecordName(parsed.fileName),
     currentProgramName: String(parsed.currentProgramName || '').trim(),
     currentPerformerName: String(parsed.currentPerformerName || '').trim(),
     updatedAt: parsed.updatedAt || null
@@ -203,6 +207,82 @@ function getShowFilePath(fileName) {
   return path.join(showRecordDir, fileName);
 }
 
+function resolveUploadFilePathByName(fileName) {
+  const rawName = String(fileName || '').trim();
+  if (!rawName) {
+    return null;
+  }
+
+  const recoverLatin1Utf8 = (value) => {
+    try {
+      const recovered = Buffer.from(String(value || ''), 'latin1').toString('utf8');
+      return recovered.includes('�') ? String(value || '') : recovered;
+    } catch {
+      return String(value || '');
+    }
+  };
+
+  const decodeSafely = (value) => {
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return value;
+    }
+  };
+
+  const candidateNames = Array.from(
+    new Set([
+      rawName,
+      decodeMusicFileToken(rawName),
+      decodeSafely(rawName),
+      recoverLatin1Utf8(rawName),
+      recoverLatin1Utf8(decodeSafely(rawName))
+    ])
+  )
+    .map((name) => String(name || '').trim())
+    .filter(Boolean)
+    .map((name) => name.normalize('NFC'));
+
+  const normalizedUploadDir = path.resolve(uploadDir);
+
+  for (const candidate of candidateNames) {
+    const safeName = path.basename(candidate);
+    if (!safeName) continue;
+
+    const targetPath = path.join(uploadDir, safeName);
+    const normalizedTargetPath = path.resolve(targetPath);
+    if (!normalizedTargetPath.startsWith(normalizedUploadDir)) {
+      continue;
+    }
+
+    if (fs.existsSync(normalizedTargetPath)) {
+      return normalizedTargetPath;
+    }
+  }
+
+  return null;
+}
+
+function toTrackResponse(track) {
+  const savedName = String(track?.savedName || '').trim();
+  const cleanFileName = savedName ? getDisplayNameFromSavedName(savedName) : '';
+  return {
+    ...track,
+    fileName: cleanFileName || track?.fileName,
+    displayName: cleanFileName || track?.displayName,
+    playUrl: savedName ? `/v1/music/file/${encodeMusicFileToken(savedName)}` : ''
+  };
+}
+
+function toMusicListResponsePayload(output = {}) {
+  const list = Array.isArray(output.musicList) ? output.musicList.map((item) => toTrackResponse(item)) : [];
+  return {
+    ...output,
+    count: list.length,
+    musicList: list
+  };
+}
+
 function syncShowToMusicList(fileName) {
   const sourcePath = getShowFilePath(fileName);
   if (!fs.existsSync(sourcePath)) {
@@ -217,13 +297,33 @@ function syncShowToMusicList(fileName) {
 
   const output = {
     generatedAt: new Date().toISOString(),
-    recordName: fileName.replace(/\.json$/i, ''),
+    recordName: decodeJsonRecordName(fileName),
     count: normalizedList.length,
     musicList: normalizedList
   };
 
   fs.writeFileSync(musicListJsonPath, JSON.stringify(output, null, 2), 'utf-8');
   return output;
+}
+
+function resolveShowRecordFileName(inputFileName) {
+  const raw = String(inputFileName || '').trim();
+  if (!raw) {
+    return null;
+  }
+
+  const exactCandidate = raw.toLowerCase().endsWith('.json') ? raw : `${raw}.json`;
+  const normalizedCandidate = normalizeJsonFileName(raw);
+  const candidates = Array.from(new Set([exactCandidate, normalizedCandidate].filter(Boolean)));
+
+  for (const candidate of candidates) {
+    const filePath = getShowFilePath(candidate);
+    if (fs.existsSync(filePath)) {
+      return candidate;
+    }
+  }
+
+  return null;
 }
 
 function listShowRecords() {
@@ -246,7 +346,7 @@ function listShowRecords() {
 
       return {
         fileName,
-        recordName: fileName.replace(/\.json$/i, ''),
+        recordName: decodeJsonRecordName(fileName),
         count,
         updatedAt: stats.mtime
       };
@@ -386,7 +486,7 @@ router.get('/musiclist', (req, res) => {
       output = saveMusicListFile('musiclist.json', generatedList);
     }
 
-    return res.json({ success: true, ...output });
+    return res.json({ success: true, ...toMusicListResponsePayload(output) });
   } catch (error) {
     return res.status(500).json({ success: false, message: `获取音乐列表失败：${error.message}` });
   }
@@ -425,6 +525,68 @@ router.post('/musiclist/save', (req, res) => {
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: `保存音乐列表失败：${error.message}` });
+  }
+});
+
+router.get('/music/file/:token', (req, res) => {
+  try {
+    const fileName = decodeMusicFileToken(req.params?.token);
+    if (!fileName) {
+      return res.status(400).json({
+        success: false,
+        message: '文件标识不能为空'
+      });
+    }
+
+    const filePath = resolveUploadFilePathByName(fileName);
+    if (!filePath) {
+      return res.status(404).json({
+        success: false,
+        message: '音频文件不存在'
+      });
+    }
+
+    return res.sendFile(filePath);
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: `获取音频文件失败：${error.message}`
+    });
+  }
+});
+
+router.post('/music/file-url', (req, res) => {
+  try {
+    const fileName = String(req.body?.fileName || '').trim();
+    if (!fileName) {
+      return res.status(400).json({
+        success: false,
+        message: 'fileName 不能为空'
+      });
+    }
+
+    const filePath = resolveUploadFilePathByName(fileName);
+    if (!filePath) {
+      return res.status(404).json({
+        success: false,
+        message: '音频文件不存在'
+      });
+    }
+
+    const savedName = path.basename(filePath);
+    const displayName = getDisplayNameFromSavedName(savedName);
+    const url = `/v1/music/file/${encodeMusicFileToken(savedName)}`;
+    return res.json({
+      success: true,
+      fileName: displayName,
+      savedName,
+      url
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: `获取播放地址失败：${error.message}`
+    });
   }
 });
 
@@ -527,7 +689,7 @@ router.get('/shows', (req, res) => {
 
 router.post('/show/current', (req, res) => {
   try {
-    const fileName = normalizeJsonFileName(req.body?.fileName);
+    const fileName = resolveShowRecordFileName(req.body?.fileName);
     const clearCurrentProgram = Boolean(req.body?.clearCurrentProgram);
     if (!fileName) {
       return res.status(400).json({
@@ -547,7 +709,7 @@ router.post('/show/current', (req, res) => {
     const syncedOutput = syncShowToMusicList(fileName);
     const currentShow = writeCurrentShowState({
       fileName,
-      recordName: fileName.replace(/\.json$/i, ''),
+      recordName: decodeJsonRecordName(fileName),
       musicList: syncedOutput.musicList,
       currentProgramName: clearCurrentProgram ? '' : undefined,
       currentPerformerName: clearCurrentProgram ? '' : undefined
@@ -572,7 +734,7 @@ router.post('/musiclist/export-pdf', (req, res) => {
     const rawRecordName = String(req.body?.recordName || '节目单').trim();
     const safeRecordName = rawRecordName || '节目单';
     const normalizedFileName = normalizeJsonFileName(safeRecordName) || '节目单.json';
-    const pdfFileName = normalizedFileName.replace(/\.json$/i, '.pdf');
+    const pdfFileName = `${decodeJsonRecordName(normalizedFileName) || '节目单'}.pdf`;
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(pdfFileName)}`);
