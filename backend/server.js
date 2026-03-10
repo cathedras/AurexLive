@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
+const swaggerUi = require('swagger-ui-express');
 
 const {
   uploadDir,
@@ -19,6 +20,7 @@ const liveRoutes = require('./routes/liveRoutes');
 const clientErrorRoutes = require('./routes/clientErrorRoutes');
 const requestLogger = require('./middleware/requestLogger');
 const { notFoundHandler, errorHandler } = require('./middleware/errorHandlers');
+const openApiSpec = require('./config/openapi');
 
 // 创建 express 应用
 const app = express();
@@ -31,6 +33,19 @@ app.use(express.json());
 app.use(requestLogger);
 
 ensureDirectories();
+
+app.get('/docs/openapi.json', (req, res) => {
+  res.json(openApiSpec);
+});
+
+app.use(
+  '/docs',
+  swaggerUi.serve,
+  swaggerUi.setup(openApiSpec, {
+    explorer: true,
+    customSiteTitle: 'FileTransfer API Docs'
+  })
+);
 
 app.use('/v1', uploadRoutes);
 app.use('/v1', fileRoutes);
@@ -72,6 +87,9 @@ app.listen(port, () => {
   console.log(`============================================`);
   console.log(`文件传输服务已启动 ✅`);
   console.log(`访问地址：http://localhost:${port}`);
-  console.log(`文件保存路径：${uploadDir}`);
+  console.log(`接口文档：http://localhost:${port}/docs`);
+  console.log(`原始接口文档：http://localhost:${port}/docs/openapi.json`);
+  console.log(`上传文件保存路径：${uploadDir}`);
+  console.log(`节目单保存路径：${showRecordDir}`);
   console.log(`============================================`);
 });

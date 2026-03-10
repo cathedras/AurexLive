@@ -56,6 +56,7 @@ npm run dev
 
 - 后端：`http://localhost:3000`
 - 前端：Vite 开发服务（通常 `http://localhost:5173`）
+- 接口文档：`http://localhost:3000/docs`
 
 ### 3) 生产构建（前端）
 
@@ -82,6 +83,26 @@ npm run build
 - `GET /shows` 获取已保存演出列表
 - `POST /show/current` 切换当前演出
 - `POST /ai/host-script-suggestions` 生成主持人口播词候选
+
+## 接口预览
+
+项目已接入 Swagger UI，可在服务启动后访问：
+
+```bash
+http://localhost:3000/docs
+```
+
+原始 OpenAPI JSON：
+
+```bash
+http://localhost:3000/docs/openapi.json
+```
+
+文档页支持：
+
+- 在线查看所有后端接口
+- 查看请求参数、响应结构和示例
+- 直接在页面中发起接口测试
 
 ## 数据文件说明
 
