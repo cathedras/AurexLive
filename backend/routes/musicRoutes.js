@@ -94,7 +94,7 @@ function saveMusicListFile(fileName, musicList) {
     musicList: normalizedList
   };
 
-  const outputPath = path.join(showRecordDir, fileName);
+  const outputPath = fileName === 'musiclist.json' ? musicListJsonPath : path.join(showRecordDir, fileName);
   fs.writeFileSync(outputPath, JSON.stringify(output, null, 2), 'utf-8');
   return output;
 }
@@ -330,7 +330,6 @@ function listShowRecords() {
   return fs
     .readdirSync(showRecordDir)
     .filter((name) => name.toLowerCase().endsWith('.json'))
-    .filter((name) => name !== 'current_show.json' && name !== 'musiclist.json')
     .map((fileName) => {
       const filePath = getShowFilePath(fileName);
       const stats = fs.statSync(filePath);
@@ -521,7 +520,7 @@ router.post('/musiclist/save', (req, res) => {
       message: shouldSetCurrent ? '演出保存成功，并已设为当前演出' : '保存成功',
       fileName,
       currentShow,
-      filePath: `/show_record/${encodeURIComponent(fileName)}`
+      filePath: fileName === 'musiclist.json' ? '' : `/v1/show_record/${encodeURIComponent(fileName)}`
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: `保存音乐列表失败：${error.message}` });

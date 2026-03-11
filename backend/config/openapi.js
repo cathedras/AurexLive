@@ -280,7 +280,7 @@ const openApiSpec = {
                         { type: 'null' }
                       ]
                     },
-                    filePath: { type: 'string', example: '/show_record/%E6%98%A5%E5%AD%A3%E6%B1%87%E6%BC%94.json' }
+                    filePath: { type: 'string', example: '/v1/show_record/%E6%98%A5%E5%AD%A3%E6%B1%87%E6%BC%94.json' }
                   }
                 }
               }

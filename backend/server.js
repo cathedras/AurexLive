@@ -7,6 +7,7 @@ const swaggerUi = require('swagger-ui-express');
 const {
   uploadDir,
   showRecordDir,
+  runtimeConfigDir,
   reactDistDir,
   frontendBuildMissingHtmlPath,
   ensureDirectories
@@ -90,6 +91,7 @@ app.listen(port, () => {
   console.log(`接口文档：http://localhost:${port}/docs`);
   console.log(`原始接口文档：http://localhost:${port}/docs/openapi.json`);
   console.log(`上传文件保存路径：${uploadDir}`);
-  console.log(`节目单保存路径：${showRecordDir}`);
+  console.log(`演出记录保存路径：${showRecordDir}`);
+  console.log(`运行时配置路径：${runtimeConfigDir}`);
   console.log(`============================================`);
 });

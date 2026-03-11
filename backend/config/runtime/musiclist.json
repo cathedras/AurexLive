@@ -1,0 +1,20 @@
+{
+  "generatedAt": "2026-03-05T12:21:20.281Z",
+  "recordName": "musiclist",
+  "count": 1,
+  "musicList": [
+    {
+      "id": "1772468573765-358559102-æ®·ç§æ¢ - ä¸­å½å¥½è¿ (KTVçä¼´å¥).mp3",
+      "performer": "殷秀梅",
+      "programName": "中国好运 (KTV版伴奏)",
+      "hostScript": "",
+      "fileName": "殷秀梅 - 中国好运 (KTV版伴奏).mp3",
+      "displayName": "殷秀梅 - 中国好运 (KTV版伴奏).mp3",
+      "savedName": "1772468573765-358559102-æ®·ç§æ¢ - ä¸­å½å¥½è¿ (KTVçä¼´å¥).mp3",
+      "size": 3170877,
+      "uploadTime": "2026-03-02T16:22:53.777Z",
+      "url": "/v1/uploads/1772468573765-358559102-%C3%A6%C2%AE%C2%B7%C3%A7%C2%A7%C2%80%C3%A6%C2%A2%C2%85%20-%20%C3%A4%C2%B8%C2%AD%C3%A5%C2%9B%C2%BD%C3%A5%C2%A5%C2%BD%C3%A8%C2%BF%C2%90%20(KTV%C3%A7%C2%89%C2%88%C3%A4%C2%BC%C2%B4%C3%A5%C2%A5%C2%8F).mp3",
+      "order": 1
+    }
+  ]
+}
