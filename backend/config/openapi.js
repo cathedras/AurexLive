@@ -148,7 +148,38 @@ const openApiSpec = {
           effectCommandId: { type: 'integer', example: 5 },
           effectName: { type: 'string', example: 'applause' },
           cameraUpdatedAt: { type: 'string', format: 'date-time', nullable: true },
-          updatedAt: { type: 'string', format: 'date-time' }
+          updatedAt: { type: 'string', format: 'date-time' },
+          backendPlayback: { $ref: '#/components/schemas/BackendPlaybackState' }
+        }
+      },
+      BackendPlaybackState: {
+        type: 'object',
+        properties: {
+          available: { type: 'boolean', example: true },
+          driver: { type: 'string', example: 'afplay' },
+          canPause: { type: 'boolean', example: true },
+          state: { type: 'string', example: 'playing' },
+          errorMessage: { type: 'string', example: '' },
+          currentTrack: {
+            anyOf: [
+              { $ref: '#/components/schemas/Track' },
+              { type: 'null' }
+            ]
+          },
+          progress: { $ref: '#/components/schemas/BackendPlaybackProgress' },
+          updatedAt: { type: 'string', format: 'date-time', nullable: true }
+        }
+      },
+      BackendPlaybackProgress: {
+        type: 'object',
+        properties: {
+          isAvailable: { type: 'boolean', example: true },
+          positionSec: { type: 'number', example: 12.345 },
+          durationSec: { type: 'number', example: 218.274, nullable: true },
+          progressPercent: { type: 'number', example: 5.66 },
+          startedAt: { type: 'string', format: 'date-time', nullable: true },
+          pausedAt: { type: 'string', format: 'date-time', nullable: true },
+          updatedAt: { type: 'string', format: 'date-time', nullable: true }
         }
       }
     }
@@ -355,6 +386,142 @@ const openApiSpec = {
                     fileName: { type: 'string', example: '青春舞曲.mp3' },
                     savedName: { type: 'string', example: '1710000000000-123456789-青春舞曲.mp3' },
                     url: { type: 'string', example: '/v1/music/file/MTcxMDAwMDAwMDAwMC0xMjM0NTY3ODkt6Z2S5pil6Iie5puyLm1wMw' }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/v1/music/backend-state': {
+      get: {
+        tags: ['Music'],
+        summary: '获取后端播放器状态',
+        responses: {
+          200: {
+            description: '读取成功',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    state: { $ref: '#/components/schemas/BackendPlaybackState' }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/v1/music/backend-progress': {
+      get: {
+        tags: ['Music'],
+        summary: '获取后端播放器实时进度',
+        responses: {
+          200: {
+            description: '读取成功',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    state: {
+                      type: 'object',
+                      properties: {
+                        playbackState: { type: 'string', example: 'playing' },
+                        currentTrack: {
+                          anyOf: [
+                            { $ref: '#/components/schemas/Track' },
+                            { type: 'null' }
+                          ]
+                        },
+                        progress: { $ref: '#/components/schemas/BackendPlaybackProgress' }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/v1/music/backend-play': {
+      post: {
+        tags: ['Music'],
+        summary: '让后端开始播放指定音频',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['fileName'],
+                properties: {
+                  fileName: { type: 'string', example: '1710000000000-123456789-青春舞曲.mp3' },
+                  trackId: { type: 'string', example: '1710000000000-demo-track' },
+                  performer: { type: 'string', example: '高一(2)班' },
+                  programName: { type: 'string', example: '青春舞曲' }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          200: {
+            description: '播放成功',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    message: { type: 'string', example: '后端开始播放' },
+                    state: { $ref: '#/components/schemas/BackendPlaybackState' }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/v1/music/backend-control': {
+      post: {
+        tags: ['Music'],
+        summary: '控制后端播放器暂停、恢复或停止',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['action'],
+                properties: {
+                  action: {
+                    type: 'string',
+                    enum: ['pause', 'resume', 'stop'],
+                    example: 'pause'
+                  }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          200: {
+            description: '控制成功',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    state: { $ref: '#/components/schemas/BackendPlaybackState' }
                   }
                 }
               }

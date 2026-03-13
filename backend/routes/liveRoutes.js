@@ -2,55 +2,20 @@ const express = require('express');
 const fs = require('fs');
 const os = require('os');
 const QRCode = require('qrcode');
+const musicPlaybackService = require('../services/musicPlaybackService');
 
 const {
-  liveStateJsonPath,
   mobileCameraHtmlPath,
   mobileControlHtmlPath
 } = require('../config/paths');
+const {
+  readLiveState,
+  writeLiveState
+} = require('../utils/liveStateStore');
 
 const router = express.Router();
 const cameraStreamClients = new Set();
 let latestCameraFrame = null;
-
-const defaultLiveState = {
-  playbackCommandId: 0,
-  playbackAction: 'none',
-  effectCommandId: 0,
-  effectName: '',
-  cameraImageData: '',
-  cameraUpdatedAt: null,
-  updatedAt: null
-};
-
-function ensureLiveStateFile() {
-  if (fs.existsSync(liveStateJsonPath)) return;
-  const initial = {
-    ...defaultLiveState,
-    updatedAt: new Date().toISOString()
-  };
-  fs.writeFileSync(liveStateJsonPath, JSON.stringify(initial, null, 2), 'utf-8');
-}
-
-function readLiveState() {
-  ensureLiveStateFile();
-  const rawText = fs.readFileSync(liveStateJsonPath, 'utf-8');
-  const parsed = JSON.parse(rawText);
-  return {
-    ...defaultLiveState,
-    ...parsed
-  };
-}
-
-function writeLiveState(nextState) {
-  const output = {
-    ...defaultLiveState,
-    ...nextState,
-    updatedAt: new Date().toISOString()
-  };
-  fs.writeFileSync(liveStateJsonPath, JSON.stringify(output, null, 2), 'utf-8');
-  return output;
-}
 
 function parseImageDataUrl(imageData) {
   const matched = String(imageData || '').match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
@@ -124,7 +89,8 @@ router.get('/live/state', (req, res) => {
         effectCommandId: state.effectCommandId,
         effectName: state.effectName,
         cameraUpdatedAt: state.cameraUpdatedAt,
-        updatedAt: state.updatedAt
+        updatedAt: state.updatedAt,
+        backendPlayback: musicPlaybackService.getPublicState()
       }
     });
   } catch (error) {
@@ -146,7 +112,24 @@ router.post('/live/playback', (req, res) => {
       playbackCommandId: Number(prev.playbackCommandId || 0) + 1
     });
 
-    return res.json({ success: true, state: next });
+    try {
+      if (action === 'play') {
+        musicPlaybackService.resume();
+      }
+      if (action === 'pause') {
+        musicPlaybackService.pause();
+      }
+    } catch {
+      // keep live control compatibility even when backend player is idle
+    }
+
+    return res.json({
+      success: true,
+      state: {
+        ...next,
+        backendPlayback: musicPlaybackService.getPublicState()
+      }
+    });
   } catch (error) {
     return res.status(500).json({ success: false, message: `更新播放控制失败：${error.message}` });
   }

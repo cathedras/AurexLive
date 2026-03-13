@@ -19,6 +19,7 @@ const aiRoutes = require('./routes/aiRoutes');
 const settingsRoutes = require('./routes/settingsRoutes');
 const liveRoutes = require('./routes/liveRoutes');
 const clientErrorRoutes = require('./routes/clientErrorRoutes');
+const musicPlaybackService = require('./services/musicPlaybackService');
 const requestLogger = require('./middleware/requestLogger');
 const { notFoundHandler, errorHandler } = require('./middleware/errorHandlers');
 const openApiSpec = require('./config/openapi');
@@ -94,4 +95,14 @@ app.listen(port, () => {
   console.log(`演出记录保存路径：${showRecordDir}`);
   console.log(`运行时配置路径：${runtimeConfigDir}`);
   console.log(`============================================`);
+
+  musicPlaybackService.restoreFromRuntimeState()
+    .then((state) => {
+      if (state.currentTrack?.programName) {
+        console.log(`已恢复后端播放：${state.currentTrack.performer || '未知演出人'} - ${state.currentTrack.programName} (${state.state})`);
+      }
+    })
+    .catch((error) => {
+      console.error(`恢复后端播放状态失败：${error.message}`);
+    });
 });

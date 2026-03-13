@@ -2,6 +2,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const PDFDocument = require('pdfkit');
+const musicPlaybackService = require('../services/musicPlaybackService');
 
 const {
   uploadDir,
@@ -585,6 +586,94 @@ router.post('/music/file-url', (req, res) => {
     return res.status(500).json({
       success: false,
       message: `获取播放地址失败：${error.message}`
+    });
+  }
+});
+
+router.get('/music/backend-state', (req, res) => {
+  return res.json({
+    success: true,
+    state: musicPlaybackService.getPublicState()
+  });
+});
+
+router.get('/music/backend-progress', (req, res) => {
+  const state = musicPlaybackService.getPublicState();
+  return res.json({
+    success: true,
+    state: {
+      playbackState: state.state,
+      currentTrack: state.currentTrack,
+      progress: state.progress,
+    }
+  });
+});
+
+router.post('/music/backend-play', async (req, res) => {
+  try {
+    const savedName = String(req.body?.fileName || '').trim();
+    if (!savedName) {
+      return res.status(400).json({
+        success: false,
+        message: 'fileName 不能为空'
+      });
+    }
+
+    const filePath = resolveUploadFilePathByName(savedName);
+    if (!filePath) {
+      return res.status(404).json({
+        success: false,
+        message: '音频文件不存在'
+      });
+    }
+
+    const state = await musicPlaybackService.playFile(filePath, {
+      id: req.body?.trackId,
+      performer: req.body?.performer,
+      programName: req.body?.programName,
+      savedName,
+      fileName: getDisplayNameFromSavedName(path.basename(filePath))
+    });
+
+    return res.json({
+      success: true,
+      message: '后端开始播放',
+      state
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: `后端播放失败：${error.message}`
+    });
+  }
+});
+
+router.post('/music/backend-control', (req, res) => {
+  try {
+    const action = String(req.body?.action || '').trim();
+    let state = null;
+
+    if (action === 'pause') {
+      state = musicPlaybackService.pause();
+    } else if (action === 'resume') {
+      state = musicPlaybackService.resume();
+    } else if (action === 'stop') {
+      state = musicPlaybackService.stop();
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: '无效操作，仅支持 pause / resume / stop'
+      });
+    }
+
+    return res.json({
+      success: true,
+      state
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: `后端播放控制失败：${error.message}`
     });
   }
 });

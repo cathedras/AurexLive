@@ -43,7 +43,15 @@ function MusicPage() {
   const [exportFileName, setExportFileName] = useState('节目单')
   const [deletingTrack, setDeletingTrack] = useState(null)
   const [historyShows, setHistoryShows] = useState([])
-  const [controlState, setControlState] = useState({ playbackCommandId: 0, effectCommandId: 0 })
+  const [browserPreviewEnabled, setBrowserPreviewEnabled] = useState(false)
+  const [backendPlayback, setBackendPlayback] = useState({
+    available: false,
+    driver: '',
+    canPause: false,
+    state: 'idle',
+    errorMessage: '',
+    currentTrack: null,
+  })
   const [customEffectName, setCustomEffectName] = useState('')
   const audioCtxRef = useRef(null)
 
@@ -51,8 +59,6 @@ function MusicPage() {
     refreshPageData()
     detectSpeechSupport()
   }, [])
-
-  // 暂停 /v1/live/state 轮询
 
   const detectSpeechSupport = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
@@ -77,7 +83,24 @@ function MusicPage() {
   }
 
   const refreshPageData = async () => {
-    await Promise.all([fetchTracks(), fetchCurrentShow(), fetchUserSettings(), fetchHistoryShows()])
+    await Promise.all([fetchTracks(), fetchCurrentShow(), fetchUserSettings(), fetchHistoryShows(), fetchBackendPlaybackState()])
+  }
+
+  const fetchBackendPlaybackState = async () => {
+    try {
+      const result = await apiGet('/v1/music/backend-state')
+      if (!result.success || !result.state) {
+        return
+      }
+
+      setBackendPlayback(result.state)
+    } catch {
+      setBackendPlayback((prev) => ({
+        ...prev,
+        available: false,
+        state: 'idle',
+      }))
+    }
   }
 
   const fetchHistoryShows = async () => {
@@ -160,34 +183,6 @@ function MusicPage() {
     setCustomEffectName('')
   }
 
-  const pollLiveState = async () => {
-    try {
-      const result = await apiGet('/v1/live/state')
-      if (!result.success || !result.state) return
-
-      const state = result.state
-
-      if (Number(state.playbackCommandId || 0) !== Number(controlState.playbackCommandId || 0)) {
-        setControlState((prev) => ({ ...prev, playbackCommandId: Number(state.playbackCommandId || 0) }))
-        if (state.playbackAction === 'play' && audioRef.current) {
-          audioRef.current.play().catch(() => {})
-        }
-        if (state.playbackAction === 'pause' && audioRef.current) {
-          audioRef.current.pause()
-        }
-      }
-
-      if (Number(state.effectCommandId || 0) !== Number(controlState.effectCommandId || 0)) {
-        setControlState((prev) => ({ ...prev, effectCommandId: Number(state.effectCommandId || 0) }))
-        if (state.effectName) {
-          triggerLocalEffect(state.effectName)
-        }
-      }
-    } catch {
-      // ignore polling errors
-    }
-  }
-
   const reportClientError = async ({ message: errorMessage, stack, meta } = {}) => {
     try {
       await apiPost('/v1/client-error', {
@@ -256,12 +251,28 @@ function MusicPage() {
   )
 
   useEffect(() => {
+    const backendSavedName = String(backendPlayback.currentTrack?.savedName || '').trim()
+    if (!backendSavedName) {
+      if (['idle', 'stopped'].includes(String(backendPlayback.state || '').trim())) {
+        setCurrentTrackId(null)
+      }
+      return
+    }
+
+    const matchedTrack = tracks.find((track) => String(track.savedName || '').trim() === backendSavedName)
+    if (matchedTrack) {
+      setCurrentTrackId(matchedTrack.id)
+    }
+  }, [backendPlayback, tracks])
+
+  useEffect(() => {
+    if (!browserPreviewEnabled) return
     if (!autoPlayEnabled) return
     if (!currentTrack || !audioRef.current) return
     audioRef.current.play().catch(() => {
       setMessage('当前浏览器阻止了自动播放，请手动点击播放器上的播放按钮。')
     })
-  }, [currentTrack, autoPlayEnabled])
+  }, [browserPreviewEnabled, currentTrack, autoPlayEnabled])
 
   const fetchTracks = async () => {
     try {
@@ -346,7 +357,25 @@ function MusicPage() {
         audioElement.load()
       }
 
-      await audioElement.play()
+      const backendResult = await apiPost('/v1/music/backend-play', {
+        fileName: savedFileName,
+        trackId: selectedTrack.id,
+        performer: selectedTrack.performer,
+        programName: selectedTrack.programName,
+      })
+      if (!backendResult.success || !backendResult.state) {
+        throw new Error(backendResult.message || '后端未能开始播放')
+      }
+
+      setBackendPlayback(backendResult.state)
+
+      if (browserPreviewEnabled) {
+        await audioElement.play()
+        setMessage('已开始播放，后端正在持续输出，浏览器同步预听已开启。')
+      } else {
+        audioElement.pause()
+        setMessage('已切换到后端播放。关闭网页后，只要服务仍在运行，音乐会继续输出。')
+      }
     } catch (error) {
       const errorName = error?.name || 'UnknownError'
       const errorMessage = error?.message || '未知错误'
@@ -379,6 +408,50 @@ function MusicPage() {
 
       setMessage(`播放失败：${errorName} - ${errorMessage}`)
     }
+  }
+
+  const controlBackendPlayback = async (action) => {
+    try {
+      const result = await apiPost('/v1/music/backend-control', { action })
+      if (!result.success || !result.state) {
+        throw new Error(result.message || '控制失败')
+      }
+
+      setBackendPlayback(result.state)
+
+      if (action === 'stop' && audioRef.current && !browserPreviewEnabled) {
+        audioRef.current.pause()
+      }
+
+      const label = action === 'pause' ? '后端播放已暂停' : action === 'resume' ? '后端播放已恢复' : '后端播放已停止'
+      setMessage(label)
+    } catch (error) {
+      setMessage(`后端控制失败：${error.message}`)
+    }
+  }
+
+  const getBackendPlaybackLabel = () => {
+    if (!backendPlayback.available) {
+      return '不可用'
+    }
+
+    if (backendPlayback.state === 'playing') {
+      return '播放中'
+    }
+
+    if (backendPlayback.state === 'paused') {
+      return '已暂停'
+    }
+
+    if (backendPlayback.state === 'stopping') {
+      return '停止中'
+    }
+
+    if (backendPlayback.state === 'stopped') {
+      return '已停止'
+    }
+
+    return '空闲'
   }
 
   const onDragStart = (trackId) => {
@@ -914,8 +987,52 @@ function MusicPage() {
       <div className="music-player-panel">
         <div className="music-playing-title">
           {currentTrack
-            ? `正在播放：${currentTrack.performer} - ${currentTrack.programName}`
+            ? `当前节目：${currentTrack.performer} - ${currentTrack.programName}`
             : '请选择下方音乐进行播放'}
+        </div>
+        <div className="music-backend-status">
+          <span>后端输出：{getBackendPlaybackLabel()}</span>
+          <span>播放器：{backendPlayback.driver || '未检测到'}</span>
+          {backendPlayback.currentTrack?.programName && (
+            <span>
+              后端当前：{backendPlayback.currentTrack.performer || '未知演出人'} - {backendPlayback.currentTrack.programName}
+            </span>
+          )}
+          {backendPlayback.errorMessage && <span>错误：{backendPlayback.errorMessage}</span>}
+        </div>
+        <div className="music-backend-actions">
+          <label className="music-preview-toggle">
+            <input
+              type="checkbox"
+              checked={browserPreviewEnabled}
+              onChange={(event) => setBrowserPreviewEnabled(event.target.checked)}
+            />
+            浏览器同步预听
+          </label>
+          <button
+            type="button"
+            className="refresh-btn"
+            onClick={() => controlBackendPlayback('pause')}
+            disabled={!backendPlayback.available || backendPlayback.state !== 'playing'}
+          >
+            后端暂停
+          </button>
+          <button
+            type="button"
+            className="refresh-btn"
+            onClick={() => controlBackendPlayback('resume')}
+            disabled={!backendPlayback.available || backendPlayback.state !== 'paused'}
+          >
+            后端恢复
+          </button>
+          <button
+            type="button"
+            className="refresh-btn"
+            onClick={() => controlBackendPlayback('stop')}
+            disabled={!backendPlayback.available || ['idle', 'stopped'].includes(backendPlayback.state)}
+          >
+            后端停止
+          </button>
         </div>
         <audio
           ref={audioRef}
