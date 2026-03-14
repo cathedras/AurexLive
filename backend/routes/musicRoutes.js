@@ -713,17 +713,17 @@ router.post('/music/backend-play', async (req, res) => {
   }
 });
 
-router.post('/music/backend-control', (req, res) => {
+router.post('/music/backend-control', async (req, res) => {
   try {
     const action = String(req.body?.action || '').trim();
     let state = null;
 
     if (action === 'pause') {
-      state = musicPlaybackService.pause();
+      state = await musicPlaybackService.pause();
     } else if (action === 'resume') {
-      state = musicPlaybackService.resume();
+      state = await musicPlaybackService.resume();
     } else if (action === 'stop') {
-      state = musicPlaybackService.stop();
+      state = await musicPlaybackService.stop();
     } else {
       return res.status(400).json({
         success: false,

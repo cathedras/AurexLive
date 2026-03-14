@@ -1,3 +1,66 @@
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
+import * as Tooltip from '@radix-ui/react-tooltip'
+import { Download, Headphones, LoaderCircle, Lock, MoreHorizontal, Pause, Pencil, Play, Plus, Printer, RefreshCw, Save, Trash2 } from 'lucide-react'
+
+function HeaderActionButton({ label, active = false, onClick, children }) {
+  return (
+    <Tooltip.Root delayDuration={150}>
+      <Tooltip.Trigger asChild>
+        <button
+          type="button"
+          className={`header-icon-btn ${active ? 'header-icon-btn-active' : ''}`.trim()}
+          onClick={onClick}
+          aria-label={label}
+        >
+          <span className="header-icon-btn-graphic" aria-hidden="true">{children}</span>
+        </button>
+      </Tooltip.Trigger>
+      <Tooltip.Portal>
+        <Tooltip.Content className="music-toolbar-tooltip" side="top" sideOffset={10}>
+          {label}
+          <Tooltip.Arrow className="music-toolbar-tooltip-arrow" />
+        </Tooltip.Content>
+      </Tooltip.Portal>
+    </Tooltip.Root>
+  )
+}
+
+function RowActionButton({ label, tone = 'neutral', active = false, disabled = false, onClick, children }) {
+  return (
+    <Tooltip.Root delayDuration={120}>
+      <Tooltip.Trigger asChild>
+        <button
+          type="button"
+          className={`row-icon-btn row-icon-btn-${tone} ${active ? 'row-icon-btn-active' : ''}`.trim()}
+          onClick={onClick}
+          disabled={disabled}
+          aria-label={label}
+        >
+          <span className="row-icon-btn-graphic" aria-hidden="true">{children}</span>
+        </button>
+      </Tooltip.Trigger>
+      <Tooltip.Portal>
+        <Tooltip.Content className="music-toolbar-tooltip" side="top" sideOffset={10}>
+          {label}
+          <Tooltip.Arrow className="music-toolbar-tooltip-arrow" />
+        </Tooltip.Content>
+      </Tooltip.Portal>
+    </Tooltip.Root>
+  )
+}
+
+function PlaybackActionIcon({ playbackState }) {
+  if (playbackState === 'playing') {
+    return <Pause className="row-action-icon" strokeWidth={1.8} />
+  }
+
+  if (playbackState === 'stopping') {
+    return <LoaderCircle className="row-action-icon row-action-icon-spinning" strokeWidth={1.8} />
+  }
+
+  return <Play className="row-action-icon" strokeWidth={1.8} />
+}
+
 function MusicTrackTable({
   currentShowName,
   isPlaylistLocked,
@@ -18,7 +81,6 @@ function MusicTrackTable({
   isTrackActive,
   toggleTrackPlayback,
   getTrackPlaybackState,
-  getTrackPlaybackButtonLabel,
   getTrackPreviewTip,
   openPreviewPlayer,
   getTrackEditTip,
@@ -27,25 +89,74 @@ function MusicTrackTable({
   onDeleteTrack,
 }) {
   return (
-    <div className="music-list-wrap">
-      <div className="music-list-header">
-        <div className="music-list-title">
-          音乐文件列表（当前演出：{currentShowName}）
-          <span className={`playlist-lock-badge ${isPlaylistLocked ? 'playlist-lock-badge-locked' : 'playlist-lock-badge-unlocked'}`}>
-            {isPlaylistLocked ? '节目单已锁定' : '节目单未锁定'}
-          </span>
+    <Tooltip.Provider delayDuration={150}>
+      <div className="music-list-wrap">
+        <div className="music-list-header">
+          <div className="music-list-title">
+            音乐文件列表（当前演出：{currentShowName}）
+            <span className={`playlist-lock-badge ${isPlaylistLocked ? 'playlist-lock-badge-locked' : 'playlist-lock-badge-unlocked'}`}>
+              {isPlaylistLocked ? '节目单已锁定' : '节目单未锁定'}
+            </span>
+          </div>
+          <div className="music-list-actions">
+            <HeaderActionButton label="新增节目" onClick={onOpenCreateDialog}>
+              <Plus className="header-action-icon" strokeWidth={1.8} />
+            </HeaderActionButton>
+
+            <HeaderActionButton label={isPlaylistLocked ? '解除节目单锁定' : '锁定节目单'} active={isPlaylistLocked} onClick={onTogglePlaylistLock}>
+              <Lock className="header-action-icon" strokeWidth={1.8} />
+            </HeaderActionButton>
+
+            <HeaderActionButton label="刷新列表" onClick={onRefreshPageData}>
+              <RefreshCw className="header-action-icon" strokeWidth={1.8} />
+            </HeaderActionButton>
+
+            <HeaderActionButton label="保存演出" onClick={onSaveMusicList}>
+              <Save className="header-action-icon" strokeWidth={1.8} />
+            </HeaderActionButton>
+
+            <DropdownMenu.Root>
+              <Tooltip.Root delayDuration={150}>
+                <Tooltip.Trigger asChild>
+                  <DropdownMenu.Trigger asChild>
+                    <button
+                      type="button"
+                      className="header-icon-btn"
+                      aria-label="更多操作"
+                    >
+                      <span className="header-icon-btn-graphic" aria-hidden="true">
+                        <MoreHorizontal className="header-action-icon" strokeWidth={1.8} />
+                      </span>
+                    </button>
+                  </DropdownMenu.Trigger>
+                </Tooltip.Trigger>
+                <Tooltip.Portal>
+                  <Tooltip.Content className="music-toolbar-tooltip" side="top" sideOffset={10}>
+                    更多操作
+                    <Tooltip.Arrow className="music-toolbar-tooltip-arrow" />
+                  </Tooltip.Content>
+                </Tooltip.Portal>
+              </Tooltip.Root>
+
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content className="music-action-menu-panel" sideOffset={10} align="end">
+                  <DropdownMenu.Item className="music-action-menu-item" onSelect={onPrintProgramSheet}>
+                    <span className="music-action-menu-icon" aria-hidden="true">
+                      <Printer size={16} strokeWidth={1.8} />
+                    </span>
+                    <span>打印节目单</span>
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item className="music-action-menu-item" onSelect={onExportPdf}>
+                    <span className="music-action-menu-icon" aria-hidden="true">
+                      <Download size={16} strokeWidth={1.8} />
+                    </span>
+                    <span>导出 PDF</span>
+                  </DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
+          </div>
         </div>
-        <div className="music-list-actions">
-          <button type="button" className="refresh-btn" onClick={onOpenCreateDialog}>新增节目</button>
-          <button type="button" className={`refresh-btn ${isPlaylistLocked ? 'refresh-btn-active' : ''}`} onClick={onTogglePlaylistLock}>
-            {isPlaylistLocked ? '解除锁定' : '锁定节目单'}
-          </button>
-          <button type="button" className="refresh-btn" onClick={onRefreshPageData}>刷新列表</button>
-          <button type="button" className="refresh-btn" onClick={onPrintProgramSheet}>打印节目单</button>
-          <button type="button" className="refresh-btn" onClick={onExportPdf}>导出 PDF</button>
-          <button type="button" className="refresh-btn" onClick={onSaveMusicList}>保存演出</button>
-        </div>
-      </div>
       <table className="music-table">
         <thead>
           <tr>
@@ -83,47 +194,34 @@ function MusicTrackTable({
               <td className="music-action-cell">
                 <div className="music-action-buttons">
                   {track.isTemporary ? (
-                    <span className="action-tip-wrap" data-tip={getTrackCreateTip(track)}>
-                      <button className="row-add-btn" onClick={() => createTrackFromUpload(track)} type="button">
-                        新增节目
-                      </button>
-                    </span>
+                    <RowActionButton label={getTrackCreateTip(track)} tone="create" onClick={() => createTrackFromUpload(track)}>
+                      <Plus className="row-action-icon" strokeWidth={1.8} />
+                    </RowActionButton>
                   ) : (
                     <>
-                      <span className="action-tip-wrap" data-tip={getTrackPlaybackTip(track)}>
-                        <button
-                          className={`row-play-btn ${isTrackActive(track) ? 'row-play-btn-active' : ''}`}
-                          onClick={() => toggleTrackPlayback(track)}
-                          type="button"
-                          disabled={!track.savedName || getTrackPlaybackState(track) === 'stopping'}
-                        >
-                          <span
-                            className={`row-play-status row-play-status-${getTrackPlaybackState(track)}`}
-                            aria-hidden="true"
-                          />
-                          <span>{getTrackPlaybackButtonLabel(track)}</span>
-                        </button>
-                      </span>
-                      <span className="action-tip-wrap" data-tip={getTrackPreviewTip(track)}>
-                        <button
-                          className="row-preview-btn"
-                          onClick={() => openPreviewPlayer(track)}
-                          type="button"
-                          disabled={!track.savedName}
-                        >
-                          预听
-                        </button>
-                      </span>
-                      <span className="action-tip-wrap" data-tip={getTrackEditTip(track)}>
-                        <button className="row-edit-btn" onClick={() => openEditDialog(track)} type="button">
-                          修改
-                        </button>
-                      </span>
-                      <span className="action-tip-wrap" data-tip={getTrackDeleteTip(track)}>
-                        <button className="row-delete-btn" onClick={() => onDeleteTrack(track.id)} type="button">
-                          删除
-                        </button>
-                      </span>
+                      <RowActionButton
+                        label={getTrackPlaybackTip(track)}
+                        tone="play"
+                        active={isTrackActive(track)}
+                        onClick={() => toggleTrackPlayback(track)}
+                        disabled={!track.savedName || getTrackPlaybackState(track) === 'stopping'}
+                      >
+                        <PlaybackActionIcon playbackState={getTrackPlaybackState(track)} />
+                      </RowActionButton>
+                      <RowActionButton
+                        label={getTrackPreviewTip(track)}
+                        tone="preview"
+                        onClick={() => openPreviewPlayer(track)}
+                        disabled={!track.savedName}
+                      >
+                        <Headphones className="row-action-icon" strokeWidth={1.8} />
+                      </RowActionButton>
+                      <RowActionButton label={getTrackEditTip(track)} tone="edit" onClick={() => openEditDialog(track)}>
+                        <Pencil className="row-action-icon" strokeWidth={1.8} />
+                      </RowActionButton>
+                      <RowActionButton label={getTrackDeleteTip(track)} tone="delete" onClick={() => onDeleteTrack(track.id)}>
+                        <Trash2 className="row-action-icon" strokeWidth={1.8} />
+                      </RowActionButton>
                     </>
                   )}
                 </div>
@@ -132,7 +230,8 @@ function MusicTrackTable({
           ))}
         </tbody>
       </table>
-    </div>
+      </div>
+    </Tooltip.Provider>
   )
 }
 

@@ -150,13 +150,6 @@ export function getTrackPlaybackState(track, currentTrackId, backendPlayback) {
   return String(backendPlayback.state || 'idle').trim() || 'idle'
 }
 
-export function getTrackPlaybackButtonLabel(playbackState) {
-  if (playbackState === 'playing') return '暂停'
-  if (playbackState === 'paused') return '恢复'
-  if (playbackState === 'stopping') return '停止中'
-  return '播放'
-}
-
 export function getTrackPlaybackTip(track, playbackState) {
   if (!track?.savedName) {
     return '该节目暂无可播放音频'

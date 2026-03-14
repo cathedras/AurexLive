@@ -28,7 +28,6 @@ import {
   getTrackCreateTip,
   getTrackDeleteTip,
   getTrackEditTip,
-  getTrackPlaybackButtonLabel,
   getTrackPlaybackState,
   getTrackPlaybackTip,
   getTrackPreviewTip,
@@ -339,7 +338,6 @@ function MusicPage() {
         isTrackActive={(track) => isTrackActive(track, currentTrackId, backendPlayback)}
         toggleTrackPlayback={toggleTrackPlayback}
         getTrackPlaybackState={(track) => getTrackPlaybackState(track, currentTrackId, backendPlayback)}
-        getTrackPlaybackButtonLabel={(track) => getTrackPlaybackButtonLabel(getTrackPlaybackState(track, currentTrackId, backendPlayback))}
         getTrackPreviewTip={getTrackPreviewTip}
         openPreviewPlayer={openPreviewPlayer}
         getTrackEditTip={getTrackEditTip}

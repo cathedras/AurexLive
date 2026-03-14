@@ -11,7 +11,6 @@ export {
   getTrackCreateTip,
   getTrackDeleteTip,
   getTrackEditTip,
-  getTrackPlaybackButtonLabel,
   getTrackPlaybackState,
   getTrackPlaybackTip,
   getTrackPreviewTip,
