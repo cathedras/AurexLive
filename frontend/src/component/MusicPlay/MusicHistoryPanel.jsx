@@ -1,4 +1,4 @@
-function MusicHistoryPanel({ historyShows, onSwitchToHistoryShow }) {
+function MusicHistoryPanel({ historyShows, onSwitchToHistoryShow, onDeleteHistoryShow }) {
   return (
     <div className="music-list-wrap history-wrap">
       <div className="music-list-header">
@@ -11,11 +11,24 @@ function MusicHistoryPanel({ historyShows, onSwitchToHistoryShow }) {
           <li
             key={item.fileName}
             className="history-show-item"
-            onDoubleClick={() => onSwitchToHistoryShow(item.fileName)}
-            title="双击切换到该演出"
           >
-            <span className="history-show-name">{item.recordName}</span>
-            <span className="history-show-meta">{item.count} 个节目</span>
+            <button
+              type="button"
+              className="history-show-main"
+              onDoubleClick={() => onSwitchToHistoryShow(item.fileName)}
+              title="双击切换到该演出"
+            >
+              <span className="history-show-name">{item.recordName}</span>
+              <span className="history-show-meta">{item.count} 个节目</span>
+            </button>
+            <button
+              type="button"
+              className="history-show-delete"
+              onClick={() => onDeleteHistoryShow(item.fileName)}
+              title={`删除历史演出 ${item.recordName}`}
+            >
+              删除
+            </button>
           </li>
         ))}
       </ul>

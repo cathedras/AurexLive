@@ -24,42 +24,8 @@ export function isAudioFileName(fileName) {
   return /\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(String(fileName || '').trim())
 }
 
-export function buildTemporaryTracks(tracks, uploadedAudioFiles, isPlaylistLocked) {
-  if (isPlaylistLocked) {
-    return []
-  }
-
-  const existingSavedNames = new Set(
-    tracks.map((track) => String(track.savedName || '').trim()).filter(Boolean),
-  )
-
-  return uploadedAudioFiles
-    .filter((file) => {
-      const savedName = String(file.savedName || '').trim()
-      return Boolean(savedName) && !existingSavedNames.has(savedName)
-    })
-    .map((file) => ({
-      id: `temp-${file.savedName}`,
-      performer: '',
-      programName: '',
-      hostScript: '',
-      fileName: file.displayName || file.savedName,
-      savedName: file.savedName || '',
-      playUrl: file.url || '',
-      isTemporary: true,
-      uploadTime: file.uploadTime || '',
-    }))
-}
-
 export function getRefreshMessage(nextTracks = [], nextFiles = [], locked = false) {
-  const existingSavedNames = new Set(
-    nextTracks.map((track) => String(track.savedName || '').trim()).filter(Boolean),
-  )
-
-  const pendingCount = nextFiles.filter((file) => {
-    const savedName = String(file.savedName || '').trim()
-    return Boolean(savedName) && !existingSavedNames.has(savedName)
-  }).length
+  const pendingCount = Array.isArray(nextFiles) ? nextFiles.length : 0
 
   if (!nextTracks.length && pendingCount === 0) {
     return '暂无音频文件，请先在上传页上传 mp3/wav/m4a 等音频文件。'
@@ -192,11 +158,14 @@ export function reorderTracks(prevTracks, draggingId, targetId) {
   return nextTracks
 }
 
-export function buildMusicListSavePayload(recordName, tracks, setCurrent = false) {
+export function buildMusicListSavePayload(recordName, tracks, setCurrent = false, playlistLocked = false) {
   return {
     recordName,
     setCurrent,
-    musicList: tracks.map((track, index) => ({
+    playlistLocked,
+    musicList: tracks
+      .filter((track) => !track?.isTemporary && String(track?.status || 'saved').trim() !== 'temp')
+      .map((track, index) => ({
       id: track.id,
       order: index + 1,
       performer: track.performer,
@@ -204,6 +173,8 @@ export function buildMusicListSavePayload(recordName, tracks, setCurrent = false
       hostScript: track.hostScript || '',
       fileName: track.fileName,
       savedName: track.savedName || '',
+      fileHash: track.fileHash || '',
+      status: 'saved',
     })),
   }
 }
@@ -217,6 +188,9 @@ export function buildEditedTrackList({ tracks, dialogMode, editingTrack, perform
       hostScript,
       fileName: editingTrack?.fileName || '手动新增节目（无音频）',
       savedName: editingTrack?.savedName || '',
+      fileHash: editingTrack?.fileHash || '',
+      status: 'saved',
+      isTemporary: false,
     }
     return [...tracks, newTrack]
   }

@@ -131,6 +131,7 @@ class MusicPlaybackService {
     this.driver = detectDriver();
     this.player = null;
     this.state = 'idle';
+    this.volumePercent = 100;
     this.currentTrack = null;
     this.pendingTrack = null;
     this.errorMessage = '';
@@ -144,8 +145,10 @@ class MusicPlaybackService {
     try {
       const liveState = readLiveState();
       this.restoreSnapshot = liveState?.backendPlayback || null;
+      this.volumePercent = clampNumber(Number(liveState?.backendPlayback?.volumePercent ?? 100), 0, 100);
     } catch {
       this.restoreSnapshot = null;
+      this.volumePercent = 100;
     }
 
     if (this.driver.available) {
@@ -172,6 +175,15 @@ class MusicPlaybackService {
     }, ['--no-config', '--load-scripts=no']);
 
     this.bindPlayerEvents();
+    void this.applyVolume(this.volumePercent);
+  }
+
+  async applyVolume(value) {
+    if (!this.player) {
+      return;
+    }
+
+    await Promise.resolve(this.player.volume(value));
   }
 
   bindPlayerEvents() {
@@ -274,6 +286,7 @@ class MusicPlaybackService {
       available: this.driver.available,
       driver: this.driver.name,
       canPause: this.driver.canPause,
+      volumePercent: this.volumePercent,
       state: this.state,
       errorMessage: this.errorMessage,
       currentTrack: this.currentTrack,
@@ -286,6 +299,7 @@ class MusicPlaybackService {
       available: this.driver.available,
       driver: this.driver.name,
       canPause: this.driver.canPause,
+      volumePercent: this.volumePercent,
       state: this.state,
       errorMessage: this.errorMessage,
       currentTrack: this.currentTrack,
@@ -367,9 +381,10 @@ class MusicPlaybackService {
     }
 
     try {
-      const [timePos, duration] = await Promise.all([
+      const [timePos, duration, volume] = await Promise.all([
         this.player.getProperty('time-pos'),
         this.player.getProperty('duration'),
+        this.player.getProperty('volume'),
       ]);
 
       const nextTimePos = toFiniteNumberOrNull(timePos);
@@ -380,6 +395,11 @@ class MusicPlaybackService {
       const nextDuration = toFiniteNumberOrNull(duration);
       if (nextDuration !== null) {
         this.durationSec = nextDuration;
+      }
+
+      const nextVolume = toFiniteNumberOrNull(volume);
+      if (nextVolume !== null) {
+        this.volumePercent = clampNumber(Math.round(nextVolume), 0, 100);
       }
     } catch {
       // ignore metric refresh failures; event stream will continue updating
@@ -446,6 +466,11 @@ class MusicPlaybackService {
 
     try {
       this.player.load(normalizedFilePath, 'replace');
+      // When mpv is paused, replacing the file can inherit the paused flag.
+      // Explicitly resume so selecting a different track always starts playback.
+      if (this.state === 'playing' || this.state === 'paused') {
+        this.player.resume();
+      }
       await startedPromise;
       await this.refreshPlaybackMetrics();
       this.syncRuntimeState();
@@ -511,6 +536,17 @@ class MusicPlaybackService {
     this.pendingTrack = null;
     this.state = 'stopping';
     this.errorMessage = '';
+    this.syncRuntimeState();
+    return this.getPublicState();
+  }
+
+  async setVolume(value) {
+    this.ensureAvailable();
+    this.initializePlayer();
+
+    const nextVolume = clampNumber(Math.round(Number(value || 0)), 0, 100);
+    this.volumePercent = nextVolume;
+    await this.applyVolume(nextVolume);
     this.syncRuntimeState();
     return this.getPublicState();
   }

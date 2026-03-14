@@ -1,5 +1,6 @@
+import { useEffect, useRef } from 'react'
 import * as Tooltip from '@radix-ui/react-tooltip'
-import { Pause, RotateCw, Square } from 'lucide-react'
+import { Pause, RotateCw, Square, Volume1, Volume2, VolumeX } from 'lucide-react'
 
 function BackendActionButton({ label, onClick, disabled = false, children }) {
   return (
@@ -29,6 +30,7 @@ function MusicPlaybackPanel({
   currentTrack,
   backendPlayback,
   backendPlaybackLabel,
+  backendVolumePercent,
   playbackPositionLabel,
   playbackDurationLabel,
   playbackProgressPercent,
@@ -38,8 +40,34 @@ function MusicPlaybackPanel({
   canPauseBackendPlayback,
   canResumeBackendPlayback,
   canStopBackendPlayback,
+  canAdjustBackendVolume,
   onControlBackendPlayback,
+  onBackendVolumeChange,
 }) {
+  const previousVolumeRef = useRef(100)
+
+  useEffect(() => {
+    if (backendVolumePercent > 0) {
+      previousVolumeRef.current = backendVolumePercent
+    }
+  }, [backendVolumePercent])
+
+  const handleToggleMute = () => {
+    if (!canAdjustBackendVolume) {
+      return
+    }
+
+    if (backendVolumePercent <= 0) {
+      onBackendVolumeChange(previousVolumeRef.current > 0 ? previousVolumeRef.current : 100)
+      return
+    }
+
+    previousVolumeRef.current = backendVolumePercent
+    onBackendVolumeChange(0)
+  }
+
+  const VolumeIcon = backendVolumePercent <= 0 ? VolumeX : backendVolumePercent < 50 ? Volume1 : Volume2
+
   return (
     <Tooltip.Provider delayDuration={120}>
       <div className="music-player-panel">
@@ -61,6 +89,38 @@ function MusicPlaybackPanel({
           <div className="music-progress-time">
             <span>{playbackPositionLabel}</span>
             <span>{playbackDurationLabel}</span>
+          </div>
+          <div className="music-volume-popover">
+            <button
+              type="button"
+              className="music-volume-trigger"
+              onClick={handleToggleMute}
+              disabled={!canAdjustBackendVolume}
+              aria-label={backendVolumePercent <= 0 ? '取消静音' : '一键静音'}
+              title={backendVolumePercent <= 0 ? '取消静音' : '一键静音'}
+            >
+              <VolumeIcon className="music-volume-trigger-icon" strokeWidth={1.8} />
+            </button>
+            <div className="music-volume-flyout">
+              <span className="music-volume-value">{backendVolumePercent}%</span>
+              <div
+                className="music-volume-slider-shell"
+                style={{ '--music-volume-percent': `${backendVolumePercent}%` }}
+              >
+                <input
+                  type="range"
+                  className="music-volume-slider"
+                  orient="vertical"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={backendVolumePercent}
+                  onChange={(event) => onBackendVolumeChange(Number(event.target.value))}
+                  disabled={!canAdjustBackendVolume}
+                  aria-label="播放音量控制"
+                />
+              </div>
+            </div>
           </div>
           <div className="music-progress-track">
             <div className="music-progress-fill" style={{ width: `${playbackProgressPercent}%` }} />

@@ -15,6 +15,7 @@ const defaultLiveState = {
     available: false,
     driver: '',
     canPause: false,
+    volumePercent: 100,
     state: 'idle',
     errorMessage: '',
     currentTrack: null,

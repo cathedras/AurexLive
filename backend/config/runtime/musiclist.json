@@ -1,20 +1,50 @@
 {
-  "generatedAt": "2026-03-05T12:21:20.281Z",
-  "recordName": "musiclist",
-  "count": 1,
+  "generatedAt": "2026-03-14T14:29:10.593Z",
+  "recordName": "好先生文艺汇演",
+  "playlistLocked": true,
+  "count": 3,
   "musicList": [
     {
-      "id": "1772468573765-358559102-æ®·ç§æ¢ - ä¸­å½å¥½è¿ (KTVçä¼´å¥).mp3",
-      "performer": "殷秀梅",
-      "programName": "中国好运 (KTV版伴奏)",
+      "id": "1773488529504-488926398-录制于 2026-03-01 18.02.23.m4a",
+      "performer": "ccccc",
+      "programName": "dddddd",
       "hostScript": "",
+      "fileName": "录制于 2026-03-01 18.02.23.m4a",
+      "displayName": "录制于 2026-03-01 18.02.23.m4a",
+      "savedName": "1773488529504-488926398-录制于 2026-03-01 18.02.23.m4a",
+      "fileHash": "cff02f8b3e4a7571a32543db718efb125ff11725",
+      "status": "saved",
+      "size": 0,
+      "uploadTime": null,
+      "order": 1
+    },
+    {
+      "id": "1772468573765-358559102-æ®·ç§æ¢ - ä¸­å½å¥½è¿ (KTVçä¼´å¥).mp3",
+      "performer": "aaaaaa",
+      "programName": "eeeee",
+      "hostScript": "mmmmmm",
       "fileName": "殷秀梅 - 中国好运 (KTV版伴奏).mp3",
       "displayName": "殷秀梅 - 中国好运 (KTV版伴奏).mp3",
       "savedName": "1772468573765-358559102-æ®·ç§æ¢ - ä¸­å½å¥½è¿ (KTVçä¼´å¥).mp3",
-      "size": 3170877,
-      "uploadTime": "2026-03-02T16:22:53.777Z",
-      "url": "/v1/uploads/1772468573765-358559102-%C3%A6%C2%AE%C2%B7%C3%A7%C2%A7%C2%80%C3%A6%C2%A2%C2%85%20-%20%C3%A4%C2%B8%C2%AD%C3%A5%C2%9B%C2%BD%C3%A5%C2%A5%C2%BD%C3%A8%C2%BF%C2%90%20(KTV%C3%A7%C2%89%C2%88%C3%A4%C2%BC%C2%B4%C3%A5%C2%A5%C2%8F).mp3",
-      "order": 1
+      "fileHash": "521af982562e7df36839dad014889a6b61c0fae1",
+      "status": "saved",
+      "size": 0,
+      "uploadTime": null,
+      "order": 2
+    },
+    {
+      "id": "custom-1773494798934-279",
+      "performer": "mmmm",
+      "programName": "mmmmm",
+      "hostScript": "",
+      "fileName": "手动新增节目（无音频）",
+      "displayName": "手动新增节目（无音频）",
+      "savedName": "",
+      "fileHash": "f5f3ca2f7e27f849569cc0a028ab8b991de3bb52",
+      "status": "saved",
+      "size": 0,
+      "uploadTime": null,
+      "order": 3
     }
   ]
 }

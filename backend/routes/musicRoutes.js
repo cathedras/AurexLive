@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const PDFDocument = require('pdfkit');
@@ -23,12 +24,41 @@ const {
 
 const router = express.Router();
 
+function normalizeTrackFileName(fileName) {
+  return String(fileName || '')
+    .trim()
+    .normalize('NFC')
+    .toLowerCase();
+}
+
+function buildTrackFileHash(input) {
+  const normalizedName = normalizeTrackFileName(input);
+  if (!normalizedName) {
+    return '';
+  }
+
+  return crypto.createHash('sha1').update(normalizedName).digest('hex');
+}
+
+function resolveTrackFileHash(track = {}) {
+  const explicitHash = String(track?.fileHash || '').trim();
+  if (explicitHash) {
+    return explicitHash;
+  }
+
+  const displayName = String(track?.displayName || track?.fileName || '').trim();
+  const savedName = String(track?.savedName || '').trim();
+  const hashSource = displayName || getDisplayNameFromSavedName(savedName);
+  return buildTrackFileHash(hashSource);
+}
+
 function normalizeTrack(track, index = 0) {
   const performer = String(track?.performer || '').trim() || '未知演出人';
   const programName = String(track?.programName || '').trim() || '未命名节目';
   const fileName = String(track?.fileName || track?.displayName || '').trim();
   const id = String(track?.id || track?.savedName || `custom-${Date.now()}-${index}`);
   const savedName = String(track?.savedName || '').trim();
+  const status = String(track?.status || 'saved').trim() === 'temp' ? 'temp' : 'saved';
 
   return {
     id,
@@ -38,6 +68,8 @@ function normalizeTrack(track, index = 0) {
     fileName,
     displayName: fileName,
     savedName,
+    fileHash: resolveTrackFileHash({ ...track, fileName }),
+    status,
     size: Number(track?.size || 0),
     uploadTime: track?.uploadTime || null,
     order: Number(track?.order || index + 1)
@@ -59,6 +91,7 @@ function buildMusicListFromUploadedFiles() {
           displayName: cleanFileName,
           fileName: cleanFileName,
           savedName: file.savedName,
+          status: 'saved',
           size: file.size,
           uploadTime: file.uploadTime,
           order: index + 1
@@ -66,6 +99,52 @@ function buildMusicListFromUploadedFiles() {
         index
       );
     });
+}
+
+function buildUploadedAudioTrackCandidates() {
+  return getUploadedFiles(uploadDir)
+    .filter((file) => isAudioFile(file.savedName))
+    .map((file, index) => normalizeTrack({
+      id: `temp-${file.savedName}`,
+      performer: '',
+      programName: '',
+      hostScript: '',
+      displayName: getDisplayNameFromSavedName(file.savedName),
+      fileName: getDisplayNameFromSavedName(file.savedName),
+      savedName: file.savedName,
+      status: 'temp',
+      size: Number(file.size || 0),
+      uploadTime: file.uploadTime || null,
+      order: index + 1,
+    }, index));
+}
+
+function extractSavedTracksOnly(musicList = []) {
+  return (Array.isArray(musicList) ? musicList : [])
+    .map((item, index) => normalizeTrack({ ...item, status: 'saved' }, index))
+    .filter((item) => item.status === 'saved');
+}
+
+function appendTemporaryTracks(baseTracks = []) {
+  const savedTracks = extractSavedTracksOnly(baseTracks);
+  const existingHashes = new Set(
+    savedTracks
+      .map((track) => String(track.fileHash || '').trim())
+      .filter(Boolean)
+  );
+
+  const tempTracks = buildUploadedAudioTrackCandidates()
+    .filter((track) => {
+      const nextHash = String(track.fileHash || '').trim();
+      return Boolean(nextHash) && !existingHashes.has(nextHash);
+    })
+    .map((track, index) => ({
+      ...track,
+      order: savedTracks.length + index + 1,
+      status: 'temp',
+    }));
+
+  return [...savedTracks, ...tempTracks];
 }
 
 function readSavedMusicList() {
@@ -82,15 +161,34 @@ function readSavedMusicList() {
   return {
     generatedAt: parsed.generatedAt || new Date().toISOString(),
     recordName: parsed.recordName || 'musiclist',
-    musicList: parsed.musicList.map((item, index) => normalizeTrack(item, index))
+    playlistLocked: Boolean(parsed?.playlistLocked),
+    musicList: extractSavedTracksOnly(parsed.musicList)
   };
 }
 
-function saveMusicListFile(fileName, musicList) {
-  const normalizedList = (Array.isArray(musicList) ? musicList : []).map((item, index) => normalizeTrack(item, index));
+function readShowPlaylistLock(fileName) {
+  const targetPath = fileName === 'musiclist.json' ? musicListJsonPath : path.join(showRecordDir, fileName);
+  if (!fs.existsSync(targetPath)) {
+    return false;
+  }
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(targetPath, 'utf-8'));
+    return Boolean(parsed?.playlistLocked);
+  } catch {
+    return false;
+  }
+}
+
+function saveMusicListFile(fileName, musicList, options = {}) {
+  const normalizedList = extractSavedTracksOnly(musicList);
+  const playlistLocked = typeof options.playlistLocked === 'boolean'
+    ? options.playlistLocked
+    : readShowPlaylistLock(fileName);
   const output = {
     generatedAt: new Date().toISOString(),
     recordName: decodeJsonRecordName(fileName),
+    playlistLocked,
     count: normalizedList.length,
     musicList: normalizedList
   };
@@ -98,21 +196,6 @@ function saveMusicListFile(fileName, musicList) {
   const outputPath = fileName === 'musiclist.json' ? musicListJsonPath : path.join(showRecordDir, fileName);
   fs.writeFileSync(outputPath, JSON.stringify(output, null, 2), 'utf-8');
   return output;
-}
-
-function getCurrentProgramSnapshot(musicList) {
-  const firstTrack = Array.isArray(musicList) && musicList.length > 0 ? musicList[0] : null;
-  if (!firstTrack) {
-    return {
-      programName: '',
-      performer: ''
-    };
-  }
-
-  return {
-    programName: String(firstTrack.programName || '').trim(),
-    performer: String(firstTrack.performer || '').trim()
-  };
 }
 
 function ensureCurrentShowStateFile() {
@@ -123,6 +206,7 @@ function ensureCurrentShowStateFile() {
   const initialState = {
     fileName: '',
     recordName: '',
+    playlistLocked: false,
     currentProgramName: '',
     currentPerformerName: '',
     updatedAt: new Date().toISOString()
@@ -131,15 +215,30 @@ function ensureCurrentShowStateFile() {
   fs.writeFileSync(currentShowJsonPath, JSON.stringify(initialState, null, 2), 'utf-8');
 }
 
-function writeCurrentShowState({ fileName, recordName, musicList, currentProgramName, currentPerformerName }) {
+function clearCurrentShowState() {
+  const emptyState = {
+    fileName: '',
+    recordName: '',
+    playlistLocked: false,
+    currentProgramName: '',
+    currentPerformerName: '',
+    updatedAt: new Date().toISOString()
+  };
+
+  ensureCurrentShowStateFile();
+  fs.writeFileSync(currentShowJsonPath, JSON.stringify(emptyState, null, 2), 'utf-8');
+  return null;
+}
+
+function writeCurrentShowState({ fileName, recordName, musicList, playlistLocked, currentProgramName, currentPerformerName }) {
   ensureCurrentShowStateFile();
 
-  const currentProgram = getCurrentProgramSnapshot(musicList);
   const output = {
     fileName: String(fileName || '').trim(),
     recordName: String(recordName || '').trim() || decodeJsonRecordName(fileName),
-    currentProgramName: String(currentProgramName ?? currentProgram.programName ?? '').trim(),
-    currentPerformerName: String(currentPerformerName ?? currentProgram.performer ?? '').trim(),
+    playlistLocked: Boolean(playlistLocked),
+    currentProgramName: String(currentProgramName ?? '').trim(),
+    currentPerformerName: String(currentPerformerName ?? '').trim(),
     updatedAt: new Date().toISOString()
   };
 
@@ -161,10 +260,91 @@ function readCurrentShowState() {
   return {
     fileName: String(parsed.fileName),
     recordName: String(parsed.recordName || '').trim() || decodeJsonRecordName(parsed.fileName),
+    playlistLocked: Boolean(parsed.playlistLocked),
     currentProgramName: String(parsed.currentProgramName || '').trim(),
     currentPerformerName: String(parsed.currentPerformerName || '').trim(),
     updatedAt: parsed.updatedAt || null
   };
+}
+
+function getValidatedCurrentShowState() {
+  const currentState = readCurrentShowState();
+  if (!currentState?.fileName) {
+    return null;
+  }
+
+  if (fs.existsSync(getShowFilePath(currentState.fileName))) {
+    return currentState;
+  }
+
+  return clearCurrentShowState();
+}
+
+function writeRuntimeMusicList(musicList = [], recordName = 'musiclist', playlistLocked = false) {
+  const savedTracks = extractSavedTracksOnly(musicList);
+  const output = {
+    generatedAt: new Date().toISOString(),
+    recordName: String(recordName || '').trim() || 'musiclist',
+    playlistLocked: Boolean(playlistLocked),
+    count: savedTracks.length,
+    musicList: savedTracks
+  };
+
+  fs.writeFileSync(musicListJsonPath, JSON.stringify(output, null, 2), 'utf-8');
+  return output;
+}
+
+function buildTemporaryOnlyMusicListOutput(recordName = 'musiclist') {
+  const tempTracks = buildUploadedAudioTrackCandidates().map((track, index) => ({
+    ...track,
+    order: index + 1,
+    status: 'temp'
+  }));
+
+  writeRuntimeMusicList([], recordName, false);
+
+  return {
+    generatedAt: new Date().toISOString(),
+    recordName,
+    playlistLocked: false,
+    count: tempTracks.length,
+    musicList: tempTracks,
+    hasCurrentShow: false,
+    currentShow: null
+  };
+}
+
+function buildRuntimeMusicListOutput(savedList = {}) {
+  const savedTracks = extractSavedTracksOnly(savedList?.musicList);
+  const normalizedList = appendTemporaryTracks(savedTracks);
+
+  return {
+    generatedAt: new Date().toISOString(),
+    recordName: String(savedList?.recordName || '').trim() || 'musiclist',
+    playlistLocked: Boolean(savedList?.playlistLocked),
+    count: normalizedList.length,
+    musicList: normalizedList,
+    hasCurrentShow: false,
+    currentShow: null
+  };
+}
+
+function buildSavedTrackInput(track = {}, index = 0) {
+  const fileName = String(track?.fileName || track?.displayName || '').trim() || '手动新增节目（无音频）';
+  const savedName = String(track?.savedName || '').trim();
+
+  return normalizeTrack({
+    id: track?.id || savedName || `custom-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    performer: track?.performer,
+    programName: track?.programName,
+    hostScript: track?.hostScript || '',
+    fileName,
+    displayName: fileName,
+    savedName,
+    fileHash: track?.fileHash || resolveTrackFileHash({ ...track, fileName, savedName }),
+    status: 'saved',
+    order: index + 1
+  }, index);
 }
 
 function refreshCurrentProgramState(musicList) {
@@ -176,14 +356,18 @@ function refreshCurrentProgramState(musicList) {
   return writeCurrentShowState({
     fileName: currentState.fileName,
     recordName: currentState.recordName,
-    musicList
+    playlistLocked: Boolean(currentState.playlistLocked),
+    musicList,
+    currentProgramName: currentState.currentProgramName,
+    currentPerformerName: currentState.currentPerformerName
   });
 }
 
-function updateCurrentProgramState({ performer, programName }) {
+function updateCurrentProgramState({ performer, programName, clearCurrentProgram = false }) {
+  const shouldClearCurrentProgram = Boolean(clearCurrentProgram);
   const safePerformer = String(performer || '').trim();
   const safeProgramName = String(programName || '').trim();
-  if (!safeProgramName) {
+  if (!shouldClearCurrentProgram && !safeProgramName) {
     throw new Error('节目名不能为空');
   }
 
@@ -194,8 +378,9 @@ function updateCurrentProgramState({ performer, programName }) {
   const nextState = {
     fileName: currentState?.fileName || `${fallbackRecordName}.json`,
     recordName: currentState?.recordName || fallbackRecordName,
-    currentProgramName: safeProgramName,
-    currentPerformerName: safePerformer,
+    playlistLocked: Boolean(currentState?.playlistLocked),
+    currentProgramName: shouldClearCurrentProgram ? '' : safeProgramName,
+    currentPerformerName: shouldClearCurrentProgram ? '' : safePerformer,
     updatedAt: new Date().toISOString()
   };
 
@@ -267,10 +452,14 @@ function resolveUploadFilePathByName(fileName) {
 function toTrackResponse(track) {
   const savedName = String(track?.savedName || '').trim();
   const cleanFileName = savedName ? getDisplayNameFromSavedName(savedName) : '';
+  const status = String(track?.status || 'saved').trim() === 'temp' ? 'temp' : 'saved';
   return {
     ...track,
     fileName: cleanFileName || track?.fileName,
     displayName: cleanFileName || track?.displayName,
+    fileHash: resolveTrackFileHash(track),
+    status,
+    isTemporary: status === 'temp',
     playUrl: savedName ? `/v1/music/file/${encodeMusicFileToken(savedName)}` : ''
   };
 }
@@ -292,13 +481,12 @@ function syncShowToMusicList(fileName) {
 
   const rawText = fs.readFileSync(sourcePath, 'utf-8');
   const parsed = JSON.parse(rawText);
-  const normalizedList = Array.isArray(parsed?.musicList)
-    ? parsed.musicList.map((item, index) => normalizeTrack(item, index))
-    : [];
+  const normalizedList = appendTemporaryTracks(Array.isArray(parsed?.musicList) ? parsed.musicList : []);
 
   const output = {
     generatedAt: new Date().toISOString(),
     recordName: decodeJsonRecordName(fileName),
+    playlistLocked: Boolean(parsed?.playlistLocked),
     count: normalizedList.length,
     musicList: normalizedList
   };
@@ -315,7 +503,14 @@ function resolveShowRecordFileName(inputFileName) {
 
   const exactCandidate = raw.toLowerCase().endsWith('.json') ? raw : `${raw}.json`;
   const normalizedCandidate = normalizeJsonFileName(raw);
-  const candidates = Array.from(new Set([exactCandidate, normalizedCandidate].filter(Boolean)));
+  let decodedCandidate = exactCandidate;
+  try {
+    decodedCandidate = decodeURIComponent(exactCandidate);
+  } catch {
+    decodedCandidate = exactCandidate;
+  }
+  const legacyEncodedCandidate = normalizedCandidate ? `${encodeURIComponent(String(normalizedCandidate || '').replace(/\.json$/i, ''))}.json` : null;
+  const candidates = Array.from(new Set([exactCandidate, decodedCandidate, normalizedCandidate, legacyEncodedCandidate].filter(Boolean)));
 
   for (const candidate of candidates) {
     const filePath = getShowFilePath(candidate);
@@ -355,11 +550,11 @@ function listShowRecords() {
 }
 
 function getCurrentShow() {
-  return readCurrentShowState();
+  return getValidatedCurrentShowState();
 }
 
 function getCurrentProgram() {
-  const currentState = readCurrentShowState();
+  const currentState = getValidatedCurrentShowState();
   if (!currentState?.currentProgramName) {
     return null;
   }
@@ -472,55 +667,167 @@ function renderProgramSheetPdf(doc, list, recordName) {
 router.get('/musiclist', (req, res) => {
   try {
     const savedList = readSavedMusicList();
+    const currentShow = getValidatedCurrentShowState();
     let output;
 
-    if (savedList) {
-      output = {
-        generatedAt: savedList.generatedAt,
-        recordName: savedList.recordName,
-        count: savedList.musicList.length,
-        musicList: savedList.musicList
-      };
+    if (currentShow?.fileName) {
+      output = syncShowToMusicList(currentShow.fileName);
+    } else if (savedList?.musicList?.length) {
+      output = buildRuntimeMusicListOutput(savedList);
+    } else if (savedList) {
+      output = buildTemporaryOnlyMusicListOutput(savedList.recordName || 'musiclist');
     } else {
-      const generatedList = buildMusicListFromUploadedFiles();
-      output = saveMusicListFile('musiclist.json', generatedList);
+      output = buildTemporaryOnlyMusicListOutput('musiclist');
     }
 
     return res.json({ success: true, ...toMusicListResponsePayload(output) });
   } catch (error) {
-    return res.status(500).json({ success: false, message: `获取音乐列表失败：${error.message}` });
+    clearCurrentShowState();
+    const output = buildTemporaryOnlyMusicListOutput('musiclist');
+    return res.json({
+      success: true,
+      message: `当前演出文件不存在，已清除当前演出状态：${error.message}`,
+      ...toMusicListResponsePayload(output)
+    });
+  }
+});
+
+router.post('/musiclist/runtime-track', (req, res) => {
+  try {
+    const performer = String(req.body?.performer || '').trim();
+    const programName = String(req.body?.programName || '').trim();
+    const hostScript = String(req.body?.hostScript || '').trim();
+    const sourceTrack = req.body?.sourceTrack && typeof req.body.sourceTrack === 'object' ? req.body.sourceTrack : {};
+
+    if (!performer || !programName) {
+      return res.status(400).json({
+        success: false,
+        message: '演出人和节目名不能为空'
+      });
+    }
+
+    const currentShow = getValidatedCurrentShowState();
+    const targetFileName = currentShow?.fileName || 'musiclist.json';
+    const sourceList = currentShow?.fileName
+      ? (() => {
+          const filePath = getShowFilePath(currentShow.fileName);
+          if (!fs.existsSync(filePath)) {
+            throw new Error('当前演出文件不存在');
+          }
+
+          const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+          return {
+            recordName: decodeJsonRecordName(currentShow.fileName),
+            playlistLocked: Boolean(parsed?.playlistLocked),
+            musicList: extractSavedTracksOnly(parsed?.musicList)
+          };
+        })()
+      : (readSavedMusicList() || {
+          recordName: 'musiclist',
+          playlistLocked: false,
+          musicList: []
+        });
+    const savedTracks = extractSavedTracksOnly(sourceList.musicList);
+    const nextTrack = buildSavedTrackInput({
+      performer,
+      programName,
+      hostScript,
+      ...sourceTrack
+    }, savedTracks.length);
+
+    if (nextTrack.fileHash) {
+      const hasExistingTrack = savedTracks.some((track) => String(track.fileHash || '').trim() === nextTrack.fileHash);
+      if (hasExistingTrack) {
+        return res.status(409).json({
+          success: false,
+          message: '该音频文件对应的节目已存在，无需重复新增'
+        });
+      }
+    }
+
+    const nextTracks = [...savedTracks, { ...nextTrack, order: savedTracks.length + 1 }];
+    const savedOutput = currentShow?.fileName
+      ? saveMusicListFile(targetFileName, nextTracks, { playlistLocked: sourceList.playlistLocked })
+      : writeRuntimeMusicList(nextTracks, sourceList.recordName || 'musiclist', sourceList.playlistLocked);
+
+    if (currentShow?.fileName) {
+      writeCurrentShowState({
+        fileName: currentShow.fileName,
+        recordName: currentShow.recordName,
+        playlistLocked: Boolean(savedOutput.playlistLocked),
+        musicList: savedOutput.musicList,
+        currentProgramName: currentShow.currentProgramName,
+        currentPerformerName: currentShow.currentPerformerName
+      });
+      syncShowToMusicList(currentShow.fileName);
+    }
+
+    return res.json({
+      success: true,
+      message: currentShow?.fileName ? '节目已加入当前演出' : '节目已加入临时列表',
+      track: toTrackResponse(nextTrack),
+      musicList: toMusicListResponsePayload(savedOutput).musicList
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: `新增节目失败：${error.message}`
+    });
   }
 });
 
 router.post('/musiclist/save', (req, res) => {
   try {
-    const { recordName, musicList, setCurrent } = req.body || {};
-    const fileName = normalizeJsonFileName(recordName);
+    const { recordName, musicList, setCurrent, playlistLocked } = req.body || {};
+    const activeCurrentShow = getValidatedCurrentShowState();
+    const requestedFileName = normalizeJsonFileName(recordName);
+    const shouldSetCurrent = Boolean(setCurrent);
+    const fileName = shouldSetCurrent
+      ? requestedFileName
+      : ((requestedFileName === 'musiclist.json' && activeCurrentShow?.fileName) ? activeCurrentShow.fileName : requestedFileName);
 
     if (!fileName) {
       return res.status(400).json({ success: false, message: '请填写有效的演出文件名' });
     }
 
-    const savedOutput = saveMusicListFile(fileName, musicList);
-
-    const shouldSetCurrent = Boolean(setCurrent);
-    let currentShow = null;
+    const runtimeList = readSavedMusicList();
+    const sourceMusicList = shouldSetCurrent && Array.isArray(runtimeList?.musicList)
+      ? runtimeList.musicList
+      : musicList;
+    const savedOutput = saveMusicListFile(fileName, sourceMusicList, {
+      playlistLocked: typeof playlistLocked === 'boolean' ? playlistLocked : undefined
+    });
+    let nextCurrentShow = null;
 
     if (shouldSetCurrent) {
-      currentShow = writeCurrentShowState({
+      nextCurrentShow = writeCurrentShowState({
         fileName,
         recordName: fileName.replace(/\.json$/i, ''),
-        musicList: savedOutput.musicList
+        playlistLocked: Boolean(savedOutput.playlistLocked),
+        musicList: savedOutput.musicList,
+        currentProgramName: '',
+        currentPerformerName: ''
       });
+      writeRuntimeMusicList([], fileName.replace(/\.json$/i, ''), false);
     } else if (fileName === 'musiclist.json') {
       refreshCurrentProgramState(savedOutput.musicList);
+    } else if (activeCurrentShow?.fileName === fileName) {
+      nextCurrentShow = writeCurrentShowState({
+        fileName,
+        recordName: decodeJsonRecordName(fileName),
+        playlistLocked: Boolean(savedOutput.playlistLocked),
+        musicList: savedOutput.musicList,
+        currentProgramName: activeCurrentShow.currentProgramName,
+        currentPerformerName: activeCurrentShow.currentPerformerName
+      });
+      syncShowToMusicList(fileName);
     }
 
     return res.json({
       success: true,
       message: shouldSetCurrent ? '演出保存成功，并已设为当前演出' : '保存成功',
       fileName,
-      currentShow,
+      currentShow: nextCurrentShow,
       filePath: fileName === 'musiclist.json' ? '' : `/v1/show_record/${encodeURIComponent(fileName)}`
     });
   } catch (error) {
@@ -743,6 +1050,29 @@ router.post('/music/backend-control', async (req, res) => {
   }
 });
 
+router.post('/music/backend-volume', async (req, res) => {
+  try {
+    const volume = Number(req.body?.volume);
+    if (!Number.isFinite(volume)) {
+      return res.status(400).json({
+        success: false,
+        message: 'volume 必须是有效数字'
+      });
+    }
+
+    const state = await musicPlaybackService.setVolume(volume);
+    return res.json({
+      success: true,
+      state
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: `设置后端音量失败：${error.message}`
+    });
+  }
+});
+
 router.get('/show/current', (req, res) => {
   try {
     const currentShow = getCurrentShow();
@@ -788,7 +1118,8 @@ router.post('/show/current-program', (req, res) => {
   try {
     const currentShow = updateCurrentProgramState({
       performer: req.body?.performer,
-      programName: req.body?.programName
+      programName: req.body?.programName,
+      clearCurrentProgram: req.body?.clearCurrentProgram
     });
 
     return res.json({
@@ -824,6 +1155,51 @@ router.get('/show/current-state', (req, res) => {
   }
 });
 
+router.post('/show/current-lock', (req, res) => {
+  try {
+    const currentShow = getValidatedCurrentShowState();
+    if (!currentShow?.fileName) {
+      return res.status(400).json({
+        success: false,
+        message: '当前没有已打开的演出，无法设置锁定状态'
+      });
+    }
+
+    const locked = Boolean(req.body?.locked);
+    const filePath = getShowFilePath(currentShow.fileName);
+    if (!fs.existsSync(filePath)) {
+      clearCurrentShowState();
+      return res.status(404).json({
+        success: false,
+        message: '当前演出文件不存在，已清除当前演出状态'
+      });
+    }
+
+    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    const savedTracks = extractSavedTracksOnly(parsed?.musicList);
+    const savedOutput = saveMusicListFile(currentShow.fileName, savedTracks, { playlistLocked: locked });
+    const nextCurrentShow = writeCurrentShowState({
+      fileName: currentShow.fileName,
+      recordName: currentShow.recordName,
+      playlistLocked: locked,
+      musicList: savedOutput.musicList,
+      currentProgramName: currentShow.currentProgramName,
+      currentPerformerName: currentShow.currentPerformerName
+    });
+
+    return res.json({
+      success: true,
+      message: locked ? '当前演出已锁定' : '当前演出已解锁',
+      currentShow: nextCurrentShow
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: `更新当前演出锁定状态失败：${error.message}`
+    });
+  }
+});
+
 router.get('/shows', (req, res) => {
   try {
     const shows = listShowRecords();
@@ -836,6 +1212,43 @@ router.get('/shows', (req, res) => {
     return res.status(500).json({
       success: false,
       message: `获取演出列表失败：${error.message}`
+    });
+  }
+});
+
+router.delete('/show/:fileName', (req, res) => {
+  try {
+    const fileName = resolveShowRecordFileName(req.params?.fileName);
+    if (!fileName) {
+      return res.status(400).json({
+        success: false,
+        message: '请选择有效的演出文件'
+      });
+    }
+
+    const filePath = getShowFilePath(fileName);
+    const currentShow = getValidatedCurrentShowState();
+    const isCurrentShow = currentShow?.fileName === fileName;
+
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+
+    if (isCurrentShow) {
+      clearCurrentShowState();
+      writeRuntimeMusicList([], 'musiclist');
+    }
+
+    return res.json({
+      success: true,
+      message: isCurrentShow ? '历史演出删除成功，当前演出状态已清空' : '历史演出删除成功',
+      deletedFileName: fileName,
+      clearedCurrentShow: isCurrentShow
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: `删除历史演出失败：${error.message}`
     });
   }
 });
@@ -863,6 +1276,7 @@ router.post('/show/current', (req, res) => {
     const currentShow = writeCurrentShowState({
       fileName,
       recordName: decodeJsonRecordName(fileName),
+      playlistLocked: Boolean(syncedOutput.playlistLocked),
       musicList: syncedOutput.musicList,
       currentProgramName: clearCurrentProgram ? '' : undefined,
       currentPerformerName: clearCurrentProgram ? '' : undefined

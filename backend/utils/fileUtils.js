@@ -74,16 +74,28 @@ function parseTrackMeta(savedName) {
 
 function normalizeJsonFileName(inputName) {
   const trimmed = String(inputName || '').trim();
-  const safeBaseName = trimmed
+  if (!trimmed) {
+    return null;
+  }
+
+  let decodedName = trimmed;
+  try {
+    decodedName = decodeURIComponent(trimmed);
+  } catch {
+    decodedName = trimmed;
+  }
+
+  const safeBaseName = decodedName
+    .normalize('NFC')
     .replace(/\.json$/i, '')
     .replace(/[\\/:*?"<>|]/g, '_')
-    .replace(/\s+/g, '_');
+    .trim();
 
   if (!safeBaseName) {
     return null;
   }
 
-  return `${encodeURIComponent(safeBaseName)}.json`;
+  return `${safeBaseName}.json`;
 }
 
 function decodeJsonRecordName(fileName) {

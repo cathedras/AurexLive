@@ -21,7 +21,6 @@ import {
   useSpeechRecognition,
 } from '../hooks/musicPlay'
 import {
-  buildTemporaryTracks,
   formatProgressTime,
   getBackendActionTip,
   getBackendPlaybackLabel,
@@ -33,8 +32,6 @@ import {
   getTrackPreviewTip,
   isTrackActive,
   openProgramSheetWindow,
-  persistPlaylistLockState,
-  readPlaylistLockState,
   reorderTracks,
 } from '../services/musicPlay'
 
@@ -45,7 +42,7 @@ function MusicPage() {
   const performerInputRef = useRef(null)
   const programInputRef = useRef(null)
   const hostScriptInputRef = useRef(null)
-  const [isPlaylistLocked, setIsPlaylistLocked] = useState(() => readPlaylistLockState())
+  const [isPlaylistLocked, setIsPlaylistLocked] = useState(false)
   const [customEffectName, setCustomEffectName] = useState('')
   const audioCtxRef = useRef(null)
   const { openFloatingPlayer } = useFloatingAudioPlayer()
@@ -54,7 +51,7 @@ function MusicPage() {
   const {
     tracks,
     setTracks,
-    uploadedAudioFiles,
+    temporaryTracks,
     speechInputMode,
     setSpeechInputMode,
     speechLanguage,
@@ -63,6 +60,7 @@ function MusicPage() {
     showModelHintEnabled,
     marqueeSpeedSec,
     fontScalePercent,
+    hasCurrentShow,
     currentShowName,
     currentProgramName,
     setCurrentProgramName,
@@ -78,18 +76,17 @@ function MusicPage() {
   } = useMusicPageData({
     musicPageApi,
     isPlaylistLocked,
+    onPlaylistLockChange: setIsPlaylistLocked,
     onMessage: setMessage,
   })
 
-  const temporaryTracks = useMemo(() => {
-    return buildTemporaryTracks(tracks, uploadedAudioFiles, isPlaylistLocked)
-  }, [isPlaylistLocked, tracks, uploadedAudioFiles])
+  const displayTracks = useMemo(() => {
+    if (isPlaylistLocked) {
+      return tracks
+    }
 
-  const displayTracks = useMemo(() => [...tracks, ...temporaryTracks], [temporaryTracks, tracks])
-
-  useEffect(() => {
-    persistPlaylistLockState(isPlaylistLocked)
-  }, [isPlaylistLocked])
+    return [...tracks, ...temporaryTracks]
+  }, [isPlaylistLocked, temporaryTracks, tracks])
 
   const triggerCustomEffect = () => {
     const name = String(customEffectName || '').trim()
@@ -141,6 +138,7 @@ function MusicPage() {
   const canPauseBackendPlayback = backendPlayback.available && backendPlaybackState === 'playing'
   const canResumeBackendPlayback = backendPlayback.available && backendPlaybackState === 'paused'
   const canStopBackendPlayback = backendPlayback.available && ['playing', 'paused'].includes(backendPlaybackState)
+  const canAdjustBackendVolume = backendPlayback.available
 
   const backendActionCapability = {
     available: backendPlayback.available,
@@ -165,10 +163,29 @@ function MusicPage() {
     setDraggingId(null)
   }
 
-  const togglePlaylistLock = () => {
+  const togglePlaylistLock = async () => {
+    if (!hasCurrentShow) {
+      return
+    }
+
     const nextLocked = !isPlaylistLocked
-    setIsPlaylistLocked(nextLocked)
-    updateRefreshMessage(tracks, uploadedAudioFiles, nextLocked)
+
+    try {
+      const result = await musicPageApi.updateCurrentShowLock(nextLocked)
+      if (!result.success) {
+        throw new Error(result.message || '更新锁定状态失败')
+      }
+
+      setIsPlaylistLocked(Boolean(result.currentShow?.playlistLocked ?? nextLocked))
+      const refreshed = await refreshPageData()
+      updateRefreshMessage(
+        refreshed?.tracks || tracks,
+        refreshed?.temporaryTracks || temporaryTracks,
+        Boolean(result.currentShow?.playlistLocked ?? nextLocked),
+      )
+    } catch (error) {
+      setMessage(`更新锁定状态失败：${error.message}`)
+    }
   }
 
   const {
@@ -211,8 +228,9 @@ function MusicPage() {
     tracks,
     currentTrackId,
     currentShowName,
+    isPlaylistLocked,
     musicPageApi,
-    fetchCurrentShow,
+    refreshPageData,
     setTracks,
     setCurrentTrackId,
     setMessage,
@@ -231,9 +249,11 @@ function MusicPage() {
 
   const {
     switchToHistoryShow,
+    deleteHistoryShow,
     triggerLocalEffect,
     onPlay,
     controlBackendPlayback,
+    setBackendVolume,
     toggleTrackPlayback,
     openPreviewPlayer,
   } = useMusicPlaybackActions({
@@ -304,6 +324,7 @@ function MusicPage() {
         currentTrack={currentTrack}
         backendPlayback={backendPlayback}
         backendPlaybackLabel={getBackendPlaybackLabel(backendPlayback)}
+        backendVolumePercent={Math.max(0, Math.min(100, Number(backendPlayback.volumePercent ?? 100)))}
         playbackPositionLabel={playbackPositionLabel}
         playbackDurationLabel={playbackDurationLabel}
         playbackProgressPercent={playbackProgressPercent}
@@ -313,13 +334,16 @@ function MusicPage() {
         canPauseBackendPlayback={canPauseBackendPlayback}
         canResumeBackendPlayback={canResumeBackendPlayback}
         canStopBackendPlayback={canStopBackendPlayback}
+        canAdjustBackendVolume={canAdjustBackendVolume}
         onControlBackendPlayback={controlBackendPlayback}
+        onBackendVolumeChange={setBackendVolume}
       />
 
       {message && <div className="music-message">{message}</div>}
 
       <MusicTrackTable
         currentShowName={currentShowName}
+        hasCurrentShow={hasCurrentShow}
         isPlaylistLocked={isPlaylistLocked}
         displayTracks={displayTracks}
         draggingId={draggingId}
@@ -346,7 +370,7 @@ function MusicPage() {
         onDeleteTrack={onDeleteTrack}
       />
 
-      <MusicHistoryPanel historyShows={historyShows} onSwitchToHistoryShow={switchToHistoryShow} />
+      <MusicHistoryPanel historyShows={historyShows} onSwitchToHistoryShow={switchToHistoryShow} onDeleteHistoryShow={deleteHistoryShow} />
 
       <MusicEffectPanel
         customEffectName={customEffectName}

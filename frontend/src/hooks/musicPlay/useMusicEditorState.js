@@ -6,8 +6,9 @@ export function useMusicEditorState({
   tracks,
   currentTrackId,
   currentShowName,
+  isPlaylistLocked,
   musicPageApi,
-  fetchCurrentShow,
+  refreshPageData,
   setTracks,
   setCurrentTrackId,
   setMessage,
@@ -26,13 +27,13 @@ export function useMusicEditorState({
   const [deletingTrack, setDeletingTrack] = useState(null)
 
   const saveCurrentMusicList = useCallback(async (nextTracks) => {
-    const payload = buildMusicListSavePayload('musiclist', nextTracks, false)
+    const payload = buildMusicListSavePayload('musiclist', nextTracks, false, isPlaylistLocked)
 
     const result = await musicPageApi.saveMusicList(payload)
     if (!result.success) {
       throw new Error(result.message || '保存失败')
     }
-  }, [musicPageApi])
+  }, [isPlaylistLocked, musicPageApi])
 
   const openEditDialog = useCallback((track) => {
     setDialogMode('edit')
@@ -44,15 +45,19 @@ export function useMusicEditorState({
   }, [])
 
   const openCreateDialog = useCallback((sourceTrack = null) => {
+    const sourceTrackStatus = String(sourceTrack?.status || (sourceTrack?.isTemporary ? 'temp' : 'saved')).trim()
+    const shouldPrefillFromSource = sourceTrackStatus === 'saved'
+
     setDialogMode('create')
     setEditingTrack({
       id: '',
       fileName: sourceTrack?.fileName || '',
       savedName: sourceTrack?.savedName || '',
+      fileHash: sourceTrack?.fileHash || '',
       isTemporary: Boolean(sourceTrack?.isTemporary),
     })
-    setEditPerformer(sourceTrack?.performer || '')
-    setEditProgramName(sourceTrack?.programName || '')
+    setEditPerformer(shouldPrefillFromSource ? (sourceTrack?.performer || '') : '')
+    setEditProgramName(shouldPrefillFromSource ? (sourceTrack?.programName || '') : '')
     setEditHostScript('')
     setAiSuggestions([])
   }, [])
@@ -142,17 +147,36 @@ export function useMusicEditorState({
     }
 
     const hostScript = editHostScript.trim()
-    const nextTracks = buildEditedTrackList({ tracks, dialogMode, editingTrack, performer, programName, hostScript })
 
     try {
-      await saveCurrentMusicList(nextTracks)
-      setTracks(nextTracks)
+      if (dialogMode === 'create') {
+        const result = await musicPageApi.createRuntimeTrack({
+          performer,
+          programName,
+          hostScript,
+          sourceTrack: {
+            fileName: editingTrack?.fileName || '',
+            savedName: editingTrack?.savedName || '',
+            fileHash: editingTrack?.fileHash || '',
+          },
+        })
+
+        if (!result.success) {
+          throw new Error(result.message || '新增失败')
+        }
+
+        await refreshPageData()
+      } else {
+        const nextTracks = buildEditedTrackList({ tracks, dialogMode, editingTrack, performer, programName, hostScript })
+        await saveCurrentMusicList(nextTracks)
+        setTracks(nextTracks)
+      }
       setMessage(dialogMode === 'create' ? '新增并保存成功' : '修改并保存成功')
       resetEditDialog()
     } catch (error) {
       setMessage(`保存失败：${error.message}`)
     }
-  }, [dialogMode, editHostScript, editPerformer, editProgramName, editingTrack, resetEditDialog, saveCurrentMusicList, setMessage, setTracks, tracks])
+  }, [dialogMode, editHostScript, editPerformer, editProgramName, editingTrack, musicPageApi, refreshPageData, resetEditDialog, saveCurrentMusicList, setMessage, setTracks, tracks])
 
   const onSaveMusicList = useCallback(() => {
     setSaveRecordName('')
@@ -172,7 +196,7 @@ export function useMusicEditorState({
     }
 
     try {
-      const payload = buildMusicListSavePayload(trimmedName, tracks, true)
+      const payload = buildMusicListSavePayload(trimmedName, tracks, true, isPlaylistLocked)
       const result = await musicPageApi.saveMusicList(payload)
 
       if (!result.success) {
@@ -180,12 +204,12 @@ export function useMusicEditorState({
       }
 
       setMessage(`已保存并设为当前演出：${result.currentShow?.recordName || trimmedName}`)
-      await fetchCurrentShow()
+      await refreshPageData()
       closeSaveDialog()
     } catch (error) {
       setMessage(`保存失败：${error.message}`)
     }
-  }, [closeSaveDialog, fetchCurrentShow, musicPageApi, saveRecordName, setMessage, tracks])
+  }, [closeSaveDialog, isPlaylistLocked, musicPageApi, refreshPageData, saveRecordName, setMessage, tracks])
 
   const onExportPdf = useCallback(() => {
     const defaultName = currentShowName && currentShowName !== '未设置' ? currentShowName : '节目单'
@@ -203,7 +227,7 @@ export function useMusicEditorState({
       const recordName = exportFileName.trim() || '节目单'
       const blob = await musicPageApi.exportProgramSheetPdf({
         recordName,
-        musicList: buildMusicListSavePayload(recordName, tracks, false).musicList,
+        musicList: buildMusicListSavePayload(recordName, tracks, false, isPlaylistLocked).musicList,
       })
 
       const downloadedName = `${recordName}.pdf`
@@ -214,7 +238,7 @@ export function useMusicEditorState({
     } catch (error) {
       setMessage(`导出 PDF 失败：${getRequestErrorMessage(error, '请求失败')}`)
     }
-  }, [closeExportDialog, exportFileName, musicPageApi, setMessage, tracks])
+  }, [closeExportDialog, exportFileName, isPlaylistLocked, musicPageApi, setMessage, tracks])
 
   const getFieldValue = useCallback((field) => {
     if (field === 'performer') return editPerformer

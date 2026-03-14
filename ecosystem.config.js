@@ -7,7 +7,23 @@ module.exports = {
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,
-      watch: false,
+      watch: [
+        'backend/server.js',
+        'backend/routes',
+        'backend/services',
+        'backend/middleware',
+        'backend/utils',
+        'backend/views',
+        'backend/config/openapi.js',
+        'backend/config/paths.js'
+      ],
+      ignore_watch: [
+        'backend/config/runtime',
+        'uploads',
+        'show_record',
+        'frontend',
+        'node_modules'
+      ],
       max_memory_restart: '500M',
       env: {
         NODE_ENV: 'development'

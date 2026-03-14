@@ -52,6 +52,26 @@ export function useMusicPlaybackActions({
     }
   }, [musicPageApi, refreshPageData, setCurrentPerformerName, setCurrentProgramName, setCurrentTrackId, setMessage])
 
+  const deleteHistoryShow = useCallback(async (fileName) => {
+    try {
+      const result = await musicPageApi.deleteHistoryShow(fileName)
+      if (!result.success) {
+        throw new Error(result.message || '删除失败')
+      }
+
+      if (result.clearedCurrentShow) {
+        setCurrentTrackId(null)
+        setCurrentProgramName('暂无节目')
+        setCurrentPerformerName('暂无演出人员')
+      }
+
+      await refreshPageData()
+      setMessage(result.message || '历史演出删除成功')
+    } catch (error) {
+      setMessage(`删除历史演出失败：${error.message}`)
+    }
+  }, [musicPageApi, refreshPageData, setCurrentPerformerName, setCurrentProgramName, setCurrentTrackId, setMessage])
+
   const getAudioContext = useCallback(() => {
     if (!audioCtxRef.current) {
       const AudioContext = window.AudioContext || window.webkitAudioContext
@@ -170,11 +190,38 @@ export function useMusicPlaybackActions({
 
       setBackendPlayback(result.state)
 
+      if (action === 'stop') {
+        setCurrentTrackId(null)
+        setCurrentProgramName('暂无节目')
+        setCurrentPerformerName('暂无演出人员')
+
+        try {
+          await musicPageApi.updateCurrentProgram({ clearCurrentProgram: true })
+        } catch {
+          // ignore clear-current-program failures after stop succeeds
+        }
+      }
+
       const label = action === 'pause' ? '播放已暂停' : action === 'resume' ? '播放已恢复' : '播放已停止'
       setMessage(label)
       return result.state
     } catch (error) {
       setMessage(`播放控制失败：${error.message}`)
+      return null
+    }
+  }, [musicPageApi, setBackendPlayback, setCurrentPerformerName, setCurrentProgramName, setCurrentTrackId, setMessage])
+
+  const setBackendVolume = useCallback(async (volume) => {
+    try {
+      const result = await musicPageApi.updateBackendVolume(volume)
+      if (!result.success || !result.state) {
+        throw new Error(result.message || '设置音量失败')
+      }
+
+      setBackendPlayback(result.state)
+      return result.state
+    } catch (error) {
+      setMessage(`设置音量失败：${error.message}`)
       return null
     }
   }, [musicPageApi, setBackendPlayback, setMessage])
@@ -247,9 +294,11 @@ export function useMusicPlaybackActions({
   return {
     fetchBackendPlaybackState,
     switchToHistoryShow,
+    deleteHistoryShow,
     triggerLocalEffect,
     onPlay,
     controlBackendPlayback,
+    setBackendVolume,
     toggleTrackPlayback,
     openPreviewPlayer,
   }

@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getRefreshMessage, isAudioFileName, mergeRuntimeSettings } from '../../services/musicPlay'
 
-export function useMusicPageData({ musicPageApi, isPlaylistLocked, onMessage }) {
+export function useMusicPageData({ musicPageApi, isPlaylistLocked, onPlaylistLockChange, onMessage }) {
   const initialLoadRef = useRef(false)
   const refreshPromiseRef = useRef(null)
   const messageRef = useRef(onMessage)
   const playlistLockedRef = useRef(isPlaylistLocked)
   const tracksRef = useRef([])
-  const uploadedAudioFilesRef = useRef([])
+  const temporaryTracksRef = useRef([])
   const [tracks, setTracks] = useState([])
-  const [uploadedAudioFiles, setUploadedAudioFiles] = useState([])
+  const [temporaryTracks, setTemporaryTracks] = useState([])
   const [speechInputMode, setSpeechInputMode] = useState('ai')
   const [speechLanguage, setSpeechLanguage] = useState('zh-CN')
   const [offlineFallbackEnabled, setOfflineFallbackEnabled] = useState(true)
@@ -18,6 +18,7 @@ export function useMusicPageData({ musicPageApi, isPlaylistLocked, onMessage }) 
   const [autoPlayEnabled, setAutoPlayEnabled] = useState(true)
   const [marqueeSpeedSec, setMarqueeSpeedSec] = useState(16)
   const [fontScalePercent, setFontScalePercent] = useState(100)
+  const [hasCurrentShow, setHasCurrentShow] = useState(false)
   const [currentShowName, setCurrentShowName] = useState('未设置')
   const [currentProgramName, setCurrentProgramName] = useState('暂无节目')
   const [currentPerformerName, setCurrentPerformerName] = useState('暂无演出人员')
@@ -26,6 +27,7 @@ export function useMusicPageData({ musicPageApi, isPlaylistLocked, onMessage }) 
     available: false,
     driver: '',
     canPause: false,
+    volumePercent: 100,
     state: 'idle',
     errorMessage: '',
     currentTrack: null,
@@ -44,10 +46,10 @@ export function useMusicPageData({ musicPageApi, isPlaylistLocked, onMessage }) 
   }, [tracks])
 
   useEffect(() => {
-    uploadedAudioFilesRef.current = uploadedAudioFiles
-  }, [uploadedAudioFiles])
+    temporaryTracksRef.current = temporaryTracks
+  }, [temporaryTracks])
 
-  const updateRefreshMessage = useCallback((nextTracks = tracksRef.current, nextFiles = uploadedAudioFilesRef.current, locked = playlistLockedRef.current) => {
+  const updateRefreshMessage = useCallback((nextTracks = tracksRef.current, nextFiles = temporaryTracksRef.current, locked = playlistLockedRef.current) => {
     messageRef.current(getRefreshMessage(Array.isArray(nextTracks) ? nextTracks : [], Array.isArray(nextFiles) ? nextFiles : [], locked))
   }, [])
 
@@ -108,12 +110,16 @@ export function useMusicPageData({ musicPageApi, isPlaylistLocked, onMessage }) 
       const result = await musicPageApi.fetchCurrentShowState()
 
       if (!result.success || !result.hasCurrentShow || !result.currentShow) {
+        setHasCurrentShow(false)
+        onPlaylistLockChange(false)
         setCurrentShowName('未设置')
         setCurrentProgramName('暂无节目')
         setCurrentPerformerName('暂无演出人员')
         return
       }
 
+      setHasCurrentShow(true)
+      onPlaylistLockChange(Boolean(result.currentShow.playlistLocked))
       setCurrentShowName(result.currentShow.recordName || '未设置')
       if (result.hasCurrentProgram && result.currentProgram) {
         setCurrentProgramName(result.currentProgram.programName || '暂无节目')
@@ -123,11 +129,13 @@ export function useMusicPageData({ musicPageApi, isPlaylistLocked, onMessage }) 
         setCurrentPerformerName('暂无演出人员')
       }
     } catch {
+      setHasCurrentShow(false)
+      onPlaylistLockChange(false)
       setCurrentShowName('未设置')
       setCurrentProgramName('暂无节目')
       setCurrentPerformerName('暂无演出人员')
     }
-  }, [musicPageApi])
+  }, [musicPageApi, onPlaylistLockChange])
 
   const fetchTracks = useCallback(async () => {
     try {
@@ -144,34 +152,22 @@ export function useMusicPageData({ musicPageApi, isPlaylistLocked, onMessage }) 
         fileName: item.displayName || item.fileName,
         savedName: item.savedName || '',
         playUrl: item.playUrl || '',
+        fileHash: item.fileHash || '',
+        status: item.status || 'saved',
+        isTemporary: item.status === 'temp' || Boolean(item.isTemporary),
       }))
 
-      setTracks(audioTracks)
-      return { tracks: audioTracks, error: null }
+      const nextSavedTracks = audioTracks.filter((item) => !item.isTemporary)
+      const nextTemporaryTracks = audioTracks.filter((item) => item.isTemporary)
+
+      setTracks(nextSavedTracks)
+      setTemporaryTracks(nextTemporaryTracks)
+      return { tracks: nextSavedTracks, temporaryTracks: nextTemporaryTracks, error: null }
     } catch (error) {
       setTracks([])
+      setTemporaryTracks([])
       messageRef.current(`加载音乐列表失败：${error.message}`)
-      return { tracks: [], error }
-    }
-  }, [musicPageApi])
-
-  const fetchUploadedAudioFiles = useCallback(async () => {
-    try {
-      const result = await musicPageApi.fetchUploadedFiles()
-      if (!result.success) {
-        throw new Error(result.message || '加载失败')
-      }
-
-      const nextFiles = Array.isArray(result.files)
-        ? result.files.filter((file) => isAudioFileName(file.savedName || file.displayName || ''))
-        : []
-
-      setUploadedAudioFiles(nextFiles)
-      return { files: nextFiles, error: null }
-    } catch (error) {
-      setUploadedAudioFiles([])
-      messageRef.current(`加载上传文件失败：${error.message}`)
-      return { files: [], error }
+      return { tracks: [], temporaryTracks: [], error }
     }
   }, [musicPageApi])
 
@@ -181,18 +177,19 @@ export function useMusicPageData({ musicPageApi, isPlaylistLocked, onMessage }) 
     }
 
     refreshPromiseRef.current = (async () => {
-      const [trackResult, uploadResult] = await Promise.all([
+      const [trackResult] = await Promise.all([
         fetchTracks(),
-        fetchUploadedAudioFiles(),
         fetchCurrentShow(),
         fetchUserSettings(),
         fetchHistoryShows(),
         fetchBackendPlaybackState(),
       ])
 
-      if (!trackResult?.error && !uploadResult?.error) {
-        updateRefreshMessage(trackResult.tracks, uploadResult.files, playlistLockedRef.current)
+      if (!trackResult?.error) {
+        updateRefreshMessage(trackResult.tracks, trackResult.temporaryTracks, playlistLockedRef.current)
       }
+
+      return trackResult
     })()
 
     try {
@@ -200,7 +197,7 @@ export function useMusicPageData({ musicPageApi, isPlaylistLocked, onMessage }) 
     } finally {
       refreshPromiseRef.current = null
     }
-  }, [fetchBackendPlaybackState, fetchCurrentShow, fetchHistoryShows, fetchTracks, fetchUploadedAudioFiles, fetchUserSettings, updateRefreshMessage])
+  }, [fetchBackendPlaybackState, fetchCurrentShow, fetchHistoryShows, fetchTracks, fetchUserSettings, updateRefreshMessage])
 
   useEffect(() => {
     if (initialLoadRef.current) {
@@ -214,7 +211,7 @@ export function useMusicPageData({ musicPageApi, isPlaylistLocked, onMessage }) 
   return {
     tracks,
     setTracks,
-    uploadedAudioFiles,
+    temporaryTracks,
     speechInputMode,
     setSpeechInputMode,
     speechLanguage,
@@ -230,6 +227,7 @@ export function useMusicPageData({ musicPageApi, isPlaylistLocked, onMessage }) 
     setMarqueeSpeedSec,
     fontScalePercent,
     setFontScalePercent,
+    hasCurrentShow,
     currentShowName,
     setCurrentShowName,
     currentProgramName,

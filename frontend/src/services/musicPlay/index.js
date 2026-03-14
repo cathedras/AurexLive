@@ -1,9 +1,7 @@
 export { downloadBlobFile, openProgramSheetWindow } from './programSheetService'
-export { persistPlaylistLockState, readPlaylistLockState } from './storageService'
 export {
   buildEditedTrackList,
   buildMusicListSavePayload,
-  buildTemporaryTracks,
   formatProgressTime,
   getBackendActionTip,
   getBackendPlaybackLabel,

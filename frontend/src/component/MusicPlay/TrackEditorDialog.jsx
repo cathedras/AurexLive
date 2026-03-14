@@ -65,6 +65,7 @@ function TrackEditorDialog({
             className="dialog-input"
             value={editPerformer}
             onChange={(event) => onEditPerformerChange(event.target.value)}
+            placeholder="请输入演出人姓名"
           />
           <button type="button" className="input-tool-btn" onClick={() => onKeyboardInput('performer')}>键盘</button>
           <button
@@ -86,6 +87,7 @@ function TrackEditorDialog({
             className="dialog-input"
             value={editProgramName}
             onChange={(event) => onEditProgramNameChange(event.target.value)}
+            placeholder="请输入节目名称"
           />
           <button type="button" className="input-tool-btn" onClick={() => onKeyboardInput('program')}>键盘</button>
           <button

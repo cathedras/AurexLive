@@ -5,11 +5,12 @@
   "effectName": "鼓点",
   "cameraImageData": "",
   "cameraUpdatedAt": null,
-  "updatedAt": "2026-03-14T10:56:22.638Z",
+  "updatedAt": "2026-03-14T14:52:15.086Z",
   "backendPlayback": {
     "available": true,
     "driver": "mpv",
     "canPause": true,
+    "volumePercent": 76,
     "state": "idle",
     "errorMessage": "",
     "currentTrack": null,
@@ -20,8 +21,8 @@
       "progressPercent": 0,
       "startedAt": null,
       "pausedAt": null,
-      "updatedAt": "2026-03-14T10:56:22.638Z"
+      "updatedAt": "2026-03-14T14:52:15.086Z"
     },
-    "updatedAt": "2026-03-14T10:56:22.638Z"
+    "updatedAt": "2026-03-14T14:52:15.086Z"
   }
 }

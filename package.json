@@ -4,8 +4,9 @@
   "main": "backend/server.js",
   "scripts": {
     "server": "node backend/server.js",
+    "server:dev": "node --watch --watch-path=backend/server.js --watch-path=backend/routes --watch-path=backend/services --watch-path=backend/middleware --watch-path=backend/utils --watch-path=backend/views --watch-path=backend/config/openapi.js --watch-path=backend/config/paths.js backend/server.js",
     "client": "npm --prefix frontend run dev",
-    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "dev": "concurrently \"npm run server:dev\" \"npm run client\"",
     "build": "npm --prefix frontend run build",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
