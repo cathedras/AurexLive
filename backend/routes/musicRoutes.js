@@ -590,6 +590,42 @@ router.post('/music/file-url', (req, res) => {
   }
 });
 
+router.post('/music/preview-source', (req, res) => {
+  try {
+    const fileName = String(req.body?.fileName || '').trim();
+    if (!fileName) {
+      return res.status(400).json({
+        success: false,
+        message: 'fileName 不能为空'
+      });
+    }
+
+    const filePath = resolveUploadFilePathByName(fileName);
+    if (!filePath) {
+      return res.status(404).json({
+        success: false,
+        message: '音频文件不存在'
+      });
+    }
+
+    const savedName = path.basename(filePath);
+    const displayName = getDisplayNameFromSavedName(savedName);
+    const url = `/v1/music/file/${encodeMusicFileToken(savedName)}`;
+    return res.json({
+      success: true,
+      fileName: displayName,
+      savedName,
+      filePath,
+      url
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: `获取预听地址失败：${error.message}`
+    });
+  }
+});
+
 router.get('/music/backend-state', (req, res) => {
   return res.json({
     success: true,
@@ -605,6 +641,35 @@ router.get('/music/backend-progress', (req, res) => {
       playbackState: state.state,
       currentTrack: state.currentTrack,
       progress: state.progress,
+    }
+  });
+});
+
+router.get('/music/backend-progress/stream', (req, res) => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no'
+  });
+
+  const writeState = () => {
+    const state = musicPlaybackService.getPublicState();
+    res.write(`data: ${JSON.stringify({ success: true, state })}\n\n`);
+  };
+
+  writeState();
+
+  const heartbeat = setInterval(() => {
+    writeState();
+  }, 1000);
+
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    try {
+      res.end();
+    } catch {
+      // ignore close errors
     }
   });
 });

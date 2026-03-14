@@ -394,6 +394,45 @@ const openApiSpec = {
         }
       }
     },
+    '/v1/music/preview-source': {
+      post: {
+        tags: ['Music'],
+        summary: '获取预听工具使用的音频地址和文件路径',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['fileName'],
+                properties: {
+                  fileName: { type: 'string', example: '1710000000000-123456789-青春舞曲.mp3' }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          200: {
+            description: '获取成功',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    fileName: { type: 'string', example: '青春舞曲.mp3' },
+                    savedName: { type: 'string', example: '1710000000000-123456789-青春舞曲.mp3' },
+                    filePath: { type: 'string', example: '/Users/demo/FileTransfer/uploads/1710000000000-123456789-青春舞曲.mp3' },
+                    url: { type: 'string', example: '/v1/music/file/MTcxMDAwMDAwMDAwMC0xMjM0NTY3ODkt6Z2S5pil6Iie5puyLm1wMw' }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     '/v1/music/backend-state': {
       get: {
         tags: ['Music'],
@@ -444,6 +483,22 @@ const openApiSpec = {
                     }
                   }
                 }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/v1/music/backend-progress/stream': {
+      get: {
+        tags: ['Music'],
+        summary: '通过 SSE 持续推送后端播放器状态与进度',
+        responses: {
+          200: {
+            description: 'SSE 持续数据流',
+            content: {
+              'text/event-stream': {
+                schema: { type: 'string' }
               }
             }
           }
