@@ -3,6 +3,11 @@ import { getRefreshMessage, isAudioFileName, mergeRuntimeSettings } from '../../
 
 export function useMusicPageData({ musicPageApi, isPlaylistLocked, onMessage }) {
   const initialLoadRef = useRef(false)
+  const refreshPromiseRef = useRef(null)
+  const messageRef = useRef(onMessage)
+  const playlistLockedRef = useRef(isPlaylistLocked)
+  const tracksRef = useRef([])
+  const uploadedAudioFilesRef = useRef([])
   const [tracks, setTracks] = useState([])
   const [uploadedAudioFiles, setUploadedAudioFiles] = useState([])
   const [speechInputMode, setSpeechInputMode] = useState('ai')
@@ -26,9 +31,25 @@ export function useMusicPageData({ musicPageApi, isPlaylistLocked, onMessage }) 
     currentTrack: null,
   })
 
-  const updateRefreshMessage = useCallback((nextTracks = tracks, nextFiles = uploadedAudioFiles, locked = isPlaylistLocked) => {
-    onMessage(getRefreshMessage(Array.isArray(nextTracks) ? nextTracks : [], Array.isArray(nextFiles) ? nextFiles : [], locked))
-  }, [isPlaylistLocked, onMessage, tracks, uploadedAudioFiles])
+  useEffect(() => {
+    messageRef.current = onMessage
+  }, [onMessage])
+
+  useEffect(() => {
+    playlistLockedRef.current = isPlaylistLocked
+  }, [isPlaylistLocked])
+
+  useEffect(() => {
+    tracksRef.current = tracks
+  }, [tracks])
+
+  useEffect(() => {
+    uploadedAudioFilesRef.current = uploadedAudioFiles
+  }, [uploadedAudioFiles])
+
+  const updateRefreshMessage = useCallback((nextTracks = tracksRef.current, nextFiles = uploadedAudioFilesRef.current, locked = playlistLockedRef.current) => {
+    messageRef.current(getRefreshMessage(Array.isArray(nextTracks) ? nextTracks : [], Array.isArray(nextFiles) ? nextFiles : [], locked))
+  }, [])
 
   const fetchBackendPlaybackState = useCallback(async () => {
     try {
@@ -129,10 +150,10 @@ export function useMusicPageData({ musicPageApi, isPlaylistLocked, onMessage }) 
       return { tracks: audioTracks, error: null }
     } catch (error) {
       setTracks([])
-      onMessage(`加载音乐列表失败：${error.message}`)
+      messageRef.current(`加载音乐列表失败：${error.message}`)
       return { tracks: [], error }
     }
-  }, [musicPageApi, onMessage])
+  }, [musicPageApi])
 
   const fetchUploadedAudioFiles = useCallback(async () => {
     try {
@@ -149,25 +170,37 @@ export function useMusicPageData({ musicPageApi, isPlaylistLocked, onMessage }) 
       return { files: nextFiles, error: null }
     } catch (error) {
       setUploadedAudioFiles([])
-      onMessage(`加载上传文件失败：${error.message}`)
+      messageRef.current(`加载上传文件失败：${error.message}`)
       return { files: [], error }
     }
-  }, [musicPageApi, onMessage])
+  }, [musicPageApi])
 
   const refreshPageData = useCallback(async () => {
-    const [trackResult, uploadResult] = await Promise.all([
-      fetchTracks(),
-      fetchUploadedAudioFiles(),
-      fetchCurrentShow(),
-      fetchUserSettings(),
-      fetchHistoryShows(),
-      fetchBackendPlaybackState(),
-    ])
-
-    if (!trackResult?.error && !uploadResult?.error) {
-      updateRefreshMessage(trackResult.tracks, uploadResult.files, isPlaylistLocked)
+    if (refreshPromiseRef.current) {
+      return refreshPromiseRef.current
     }
-  }, [fetchBackendPlaybackState, fetchCurrentShow, fetchHistoryShows, fetchTracks, fetchUploadedAudioFiles, fetchUserSettings, isPlaylistLocked, updateRefreshMessage])
+
+    refreshPromiseRef.current = (async () => {
+      const [trackResult, uploadResult] = await Promise.all([
+        fetchTracks(),
+        fetchUploadedAudioFiles(),
+        fetchCurrentShow(),
+        fetchUserSettings(),
+        fetchHistoryShows(),
+        fetchBackendPlaybackState(),
+      ])
+
+      if (!trackResult?.error && !uploadResult?.error) {
+        updateRefreshMessage(trackResult.tracks, uploadResult.files, playlistLockedRef.current)
+      }
+    })()
+
+    try {
+      await refreshPromiseRef.current
+    } finally {
+      refreshPromiseRef.current = null
+    }
+  }, [fetchBackendPlaybackState, fetchCurrentShow, fetchHistoryShows, fetchTracks, fetchUploadedAudioFiles, fetchUserSettings, updateRefreshMessage])
 
   useEffect(() => {
     if (initialLoadRef.current) {

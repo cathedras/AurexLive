@@ -11,13 +11,7 @@ export function useBackendPlaybackStream({ backendPlayback, requestBackendPlayba
 
     const fetchLatestState = async () => {
       try {
-        const result = await requestBackendPlaybackState()
-        if (!result.success || !result.state) {
-          return null
-        }
-
-        setBackendPlayback(result.state)
-        return result.state
+        return (await requestBackendPlaybackState()) || null
       } catch {
         setBackendPlayback((prev) => ({
           ...prev,

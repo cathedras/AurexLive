@@ -73,6 +73,7 @@ function MusicPage() {
     backendPlayback,
     setBackendPlayback,
     refreshPageData,
+    fetchBackendPlaybackState,
     fetchCurrentShow,
     updateRefreshMessage,
   } = useMusicPageData({
@@ -259,7 +260,7 @@ function MusicPage() {
 
   useBackendPlaybackStream({
     backendPlayback,
-    requestBackendPlaybackState: musicPageApi.fetchBackendPlaybackState,
+    requestBackendPlaybackState: fetchBackendPlaybackState,
     setBackendPlayback,
   })
 
