@@ -1,6 +1,6 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import * as Tooltip from '@radix-ui/react-tooltip'
-import { Download, Headphones, LoaderCircle, Lock, LockOpen, MoreHorizontal, Pause, Pencil, Play, Plus, Printer, RefreshCw, Save, Trash2 } from 'lucide-react'
+import { Download, Headphones, LoaderCircle, Lock, LockOpen, MoreHorizontal, Pause, Pencil, Play, Plus, Printer, RefreshCw, Save, Trash2, X } from 'lucide-react'
 
 function HeaderActionButton({ label, active = false, onClick, children }) {
   return (
@@ -69,6 +69,7 @@ function MusicTrackTable({
   draggingId,
   onOpenCreateDialog,
   onTogglePlaylistLock,
+  onCloseCurrentShow,
   onRefreshPageData,
   onPrintProgramSheet,
   onExportPdf,
@@ -123,6 +124,12 @@ function MusicTrackTable({
             {!isPlaylistLocked && (
               <HeaderActionButton label="保存演出" onClick={onSaveMusicList}>
                 <Save className="header-action-icon" strokeWidth={1.8} />
+              </HeaderActionButton>
+            )}
+
+            {!isPlaylistLocked && hasCurrentShow && (
+              <HeaderActionButton label="关闭当前演出" onClick={onCloseCurrentShow}>
+                <X className="header-action-icon" strokeWidth={1.8} />
               </HeaderActionButton>
             )}
 

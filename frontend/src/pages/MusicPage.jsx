@@ -188,6 +188,24 @@ function MusicPage() {
     }
   }
 
+  const closeCurrentShow = async () => {
+    try {
+      const result = await musicPageApi.closeCurrentShow()
+      if (!result.success) {
+        throw new Error(result.message || '关闭当前演出失败')
+      }
+
+      setCurrentTrackId(null)
+      setCurrentProgramName('暂无节目')
+      setCurrentPerformerName('暂无演出人员')
+      setTracks([])
+      await refreshPageData()
+      setMessage(result.message || '当前演出已关闭')
+    } catch (error) {
+      setMessage(`关闭当前演出失败：${error.message}`)
+    }
+  }
+
   const {
     dialogMode,
     editingTrack,
@@ -349,6 +367,7 @@ function MusicPage() {
         draggingId={draggingId}
         onOpenCreateDialog={() => openCreateDialog()}
         onTogglePlaylistLock={togglePlaylistLock}
+        onCloseCurrentShow={closeCurrentShow}
         onRefreshPageData={refreshPageData}
         onPrintProgramSheet={onPrintProgramSheet}
         onExportPdf={onExportPdf}

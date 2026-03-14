@@ -1200,6 +1200,32 @@ router.post('/show/current-lock', (req, res) => {
   }
 });
 
+router.post('/show/current/close', (req, res) => {
+  try {
+    const currentShow = getValidatedCurrentShowState();
+    if (!currentShow?.fileName) {
+      writeRuntimeMusicList([], 'musiclist');
+      return res.json({
+        success: true,
+        message: '当前没有已打开的演出，临时列表已清空'
+      });
+    }
+
+    clearCurrentShowState();
+    writeRuntimeMusicList([], 'musiclist');
+
+    return res.json({
+      success: true,
+      message: `当前演出《${currentShow.recordName || decodeJsonRecordName(currentShow.fileName)}》已关闭，临时列表已清空`
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: `关闭当前演出失败：${error.message}`
+    });
+  }
+});
+
 router.get('/shows', (req, res) => {
   try {
     const shows = listShowRecords();

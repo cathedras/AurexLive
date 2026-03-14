@@ -11,6 +11,7 @@ export function MusicPageApiProvider({ children }) {
       fileName,
       clearCurrentProgram,
     }),
+    closeCurrentShow: async () => apiPost('/v1/show/current/close', {}),
     deleteHistoryShow: async (fileName) => httpClient.delete(`/v1/show/${encodeURIComponent(fileName)}`).then((response) => response.data),
     updateCurrentShowLock: async (locked) => apiPost('/v1/show/current-lock', { locked }),
     reportClientError: async (payload) => apiPost('/v1/client-error', payload),
