@@ -38,10 +38,13 @@ const {
   listShowRecords,
   getCurrentShow,
   getCurrentProgram,
-  findAvailableChineseFontPath,
-  renderProgramSheetPdf,
+  normalizeTrack,
   resolveShowRecordFileName
-} = require('../utils/musicUtils');
+} = require('../services/musicService.js');
+const {
+  findAvailableChineseFontPath,
+  renderProgramSheetPdf
+} = require('../utils/pdfTemplate');
 
 const router = express.Router();
 
@@ -714,10 +717,7 @@ router.post('/show/current', (req, res) => {
 
 router.post('/musiclist/export-pdf', (req, res) => {
   try {
-    const list = Array.isArray(req.body?.musicList) ? req.body.musicList.map((item, index) => {
-      const { normalizeTrack } = require('../utils/musicUtils');
-      return normalizeTrack(item, index);
-    }) : [];
+    const list = Array.isArray(req.body?.musicList) ? req.body.musicList.map((item, index) => normalizeTrack(item, index)) : [];
     const rawRecordName = String(req.body?.recordName || '节目单').trim();
     const safeRecordName = rawRecordName || '节目单';
     const normalizedFileName = normalizeJsonFileName(safeRecordName) || '节目单.json';

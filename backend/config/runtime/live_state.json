@@ -5,7 +5,7 @@
   "effectName": "鼓点",
   "cameraImageData": "",
   "cameraUpdatedAt": null,
-  "updatedAt": "2026-03-15T08:07:41.994Z",
+  "updatedAt": "2026-03-16T02:12:19.351Z",
   "backendPlayback": {
     "available": true,
     "driver": "mpv",
@@ -21,8 +21,8 @@
       "progressPercent": 0,
       "startedAt": null,
       "pausedAt": null,
-      "updatedAt": "2026-03-15T08:07:41.994Z"
+      "updatedAt": "2026-03-16T02:12:19.351Z"
     },
-    "updatedAt": "2026-03-15T08:07:41.994Z"
+    "updatedAt": "2026-03-16T02:12:19.351Z"
   }
 }

@@ -18,7 +18,7 @@ const {
   decodeJsonRecordName,
   encodeMusicFileToken,
   decodeMusicFileToken
-} = require('./fileUtils');
+} = require('../utils/fileUtils');
 
 /**
  * Normalize track file name for consistent comparison

@@ -14,6 +14,15 @@ export async function apiPost(url, data = {}, config = {}) {
   return response.data
 }
 
+export async function apiPut(url, data = {}, config = {}) {
+  const response = await httpClient.put(url, data, config)
+  return response.data
+}
+
+export async function apiDelete(url, config = {}) {
+  const response = await httpClient.delete(url, config)
+  return response.data
+}
 export function getRequestErrorMessage(error, fallback = '请求失败') {
   const responseData = error?.response?.data
   if (responseData && typeof responseData === 'object' && responseData.message) {

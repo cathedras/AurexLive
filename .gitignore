@@ -9,3 +9,5 @@ uploads/
 backend/config/runtime/live_state.json
 .vscode/settings.json
 backend/config/runtime/musiclist.json
+backend/config/runtime/live_state.json
+backend/config/runtime/
