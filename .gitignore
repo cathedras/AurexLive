@@ -6,3 +6,6 @@ node_modules/.bin/qrcode
 node_modules/.bin/tree-kill
 show_record/
 uploads/
+backend/config/runtime/live_state.json
+.vscode/settings.json
+backend/config/runtime/musiclist.json
