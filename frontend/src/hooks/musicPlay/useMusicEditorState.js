@@ -179,9 +179,11 @@ export function useMusicEditorState({
   }, [dialogMode, editHostScript, editPerformer, editProgramName, editingTrack, musicPageApi, refreshPageData, resetEditDialog, saveCurrentMusicList, setMessage, setTracks, tracks])
 
   const onSaveMusicList = useCallback(() => {
-    setSaveRecordName('')
-    setSaveDialogOpen(true)
-  }, [])
+    // 如果当前已打开演出且名称有效，则自动填入；否则清空
+    const defaultName = (currentShowName && currentShowName !== '未设置') ? currentShowName : '';
+    setSaveRecordName(defaultName);
+    setSaveDialogOpen(true);
+  }, [currentShowName]);
 
   const closeSaveDialog = useCallback(() => {
     setSaveDialogOpen(false)
@@ -196,20 +198,40 @@ export function useMusicEditorState({
     }
 
     try {
-      const payload = buildMusicListSavePayload(trimmedName, tracks, true, isPlaylistLocked)
+      // 如果打开了一个演出 (currentShowName 存在且有效)
+      const isShowOpened = currentShowName && currentShowName !== '未设置'
+      
+      let tracksToSave = tracks
+
+      if (isShowOpened) {
+        // 需求：直接把所有正式节目重新生成
+        // 过滤出所有 status 为 'saved' 的正式节目
+        const officialTracks = tracks.filter(track => track.status === 'saved')
+        
+        // 如果没有任何正式节目，提示用户或阻止操作（视业务逻辑而定，此处暂按空列表处理或保留原逻辑）
+        if (officialTracks.length === 0) {
+           setMessage('当前演出暂无正式节目，无法执行重新生成存储操作')
+           return
+        }
+        
+        tracksToSave = officialTracks
+        setMessage('正在重新生成并存储正式节目列表...')
+      }
+
+      const payload = buildMusicListSavePayload(trimmedName, tracksToSave, true, isPlaylistLocked)
       const result = await musicPageApi.saveMusicList(payload)
 
       if (!result.success) {
         throw new Error(result.message || '保存失败')
       }
 
-      setMessage(`已保存并设为当前演出：${result.currentShow?.recordName || trimmedName}`)
+      setMessage(`已${isShowOpened ? '重新生成并' : ''}保存设为当前演出：${result.currentShow?.recordName || trimmedName}`)
       await refreshPageData()
       closeSaveDialog()
     } catch (error) {
       setMessage(`保存失败：${error.message}`)
     }
-  }, [closeSaveDialog, isPlaylistLocked, musicPageApi, refreshPageData, saveRecordName, setMessage, tracks])
+  }, [closeSaveDialog, currentShowName, isPlaylistLocked, musicPageApi, refreshPageData, saveRecordName, setMessage, tracks])
 
   const onExportPdf = useCallback(() => {
     const defaultName = currentShowName && currentShowName !== '未设置' ? currentShowName : '节目单'

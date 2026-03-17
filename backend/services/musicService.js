@@ -13,6 +13,7 @@ const {
   getUploadedFiles,
   getDisplayNameFromSavedName,
   isAudioFile,
+  isVideoFile,
   parseTrackMeta,
   normalizeJsonFileName,
   decodeJsonRecordName,
@@ -90,7 +91,7 @@ function normalizeTrack(track, index = 0) {
 function buildMusicListFromUploadedFiles() {
   const uploadedFiles = getUploadedFiles(uploadDir);
   return uploadedFiles
-    .filter((file) => isAudioFile(file.savedName))
+    .filter((file) => isAudioFile(file.savedName) || isVideoFile(file.savedName))
     .map((file, index) => {
       const trackMeta = parseTrackMeta(file.savedName);
       const cleanFileName = getDisplayNameFromSavedName(file.savedName);
@@ -117,7 +118,7 @@ function buildMusicListFromUploadedFiles() {
  */
 function buildUploadedAudioTrackCandidates() {
   return getUploadedFiles(uploadDir)
-    .filter((file) => isAudioFile(file.savedName))
+    .filter((file) => isAudioFile(file.savedName) || isVideoFile(file.savedName))
     .map((file, index) => normalizeTrack({
       id: `temp-${file.savedName}`,
       performer: '',

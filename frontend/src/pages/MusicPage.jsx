@@ -46,6 +46,7 @@ function MusicPage() {
   const [customEffectName, setCustomEffectName] = useState('')
   const audioCtxRef = useRef(null)
   const { openFloatingPlayer } = useFloatingAudioPlayer()
+  
   const musicPageApi = useMusicPageApi()
 
   const {

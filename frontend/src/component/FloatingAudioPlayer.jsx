@@ -40,6 +40,17 @@ function FloatingAudioPlayerPanel({ playerState, backendPlayback, localProgress,
     ? backendPlayback.currentTrack?.performer || playerState.performer || '当前播放'
     : playerState.performer || '当前预听'
 
+  // Helper to check if file is a video based on extension
+  const isVideoFile = (fileName) => {
+    if (!fileName) return false;
+    const videoExtensions = ['.mp4', '.webm', '.ogg', '.mov', '.avi', '.mkv'];
+    const ext = fileName.toLowerCase().substring(fileName.lastIndexOf('.'));
+    return videoExtensions.includes(ext);
+  };
+
+  const currentFileName = playerState.fileName || playerState.savedName || '';
+  const isVideo = isVideoFile(currentFileName);
+
   return (
     <div className={`floating-audio-player ${playerState.collapsed ? 'floating-audio-player-collapsed' : ''}`}>
       <div className="floating-audio-player-header">
@@ -51,9 +62,6 @@ function FloatingAudioPlayerPanel({ playerState, backendPlayback, localProgress,
           </div>
         </div>
         <div className="floating-audio-player-actions">
-          <button type="button" className="floating-audio-player-btn" onClick={onToggleCollapsed}>
-            {playerState.collapsed ? '展开' : '收起'}
-          </button>
           <button type="button" className="floating-audio-player-btn" onClick={onClose}>关闭</button>
         </div>
       </div>
@@ -71,17 +79,35 @@ function FloatingAudioPlayerPanel({ playerState, backendPlayback, localProgress,
             </div>
           )}
           {!isBackendSyncOnly && (
-            <audio
-              ref={audioRef}
-              className="floating-audio-player-audio"
-              controls
-              onPlay={onAudioPlay}
-              onPause={onAudioPause}
-              onEnded={onAudioEnded}
-              onError={onAudioError}
-              onTimeUpdate={onAudioTimeUpdate}
-              onLoadedMetadata={onAudioLoadedMetadata}
-            />
+            isVideo ? (
+              <video
+                ref={audioRef}
+                className="floating-audio-player-video"
+                controls
+                autoPlay
+                style={{ width: '100%', maxHeight: '240px', background: '#000', borderRadius: '4px' }}
+                onPlay={onAudioPlay}
+                onPause={onAudioPause}
+                onEnded={onAudioEnded}
+                onError={onAudioError}
+                onTimeUpdate={onAudioTimeUpdate}
+                onLoadedMetadata={onAudioLoadedMetadata}
+              >
+                您的浏览器不支持视频标签。
+              </video>
+            ) : (
+              <audio
+                ref={audioRef}
+                className="floating-audio-player-audio"
+                controls
+                onPlay={onAudioPlay}
+                onPause={onAudioPause}
+                onEnded={onAudioEnded}
+                onError={onAudioError}
+                onTimeUpdate={onAudioTimeUpdate}
+                onLoadedMetadata={onAudioLoadedMetadata}
+              />
+            )
           )}
           {playerState.message && <div className="floating-audio-player-message">{playerState.message}</div>}
         </>

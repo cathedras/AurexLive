@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const audioExtensions = ['.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac'];
+const videoExtensions = ['.mp4', '.mov', '.avi', '.wmv', '.flv', '.mkv'];
 
 function normalizeUploadFileName(originalName) {
   const source = String(originalName || '');
@@ -51,7 +52,10 @@ function isAudioFile(fileName) {
   const lowerName = String(fileName || '').toLowerCase();
   return audioExtensions.some((ext) => lowerName.endsWith(ext));
 }
-
+function isVideoFile(fileName) {
+  const ext = path.extname(fileName).toLowerCase();
+  return videoExtensions.includes(ext);
+}
 function parseTrackMeta(savedName) {
   const fileName = getDisplayNameFromSavedName(savedName);
   const pureName = fileName.replace(/\.[^.]+$/, '');
@@ -137,6 +141,7 @@ module.exports = {
   getDisplayNameFromSavedName,
   getUploadedFiles,
   isAudioFile,
+  isVideoFile,
   parseTrackMeta,
   normalizeJsonFileName,
   decodeJsonRecordName,
