@@ -18,7 +18,7 @@ module.exports = {
         'backend/config/paths.js'
       ],
       ignore_watch: [
-        'backend/config/runtime',
+        'runtime',
         'uploads',
         'show_record',
         'frontend',

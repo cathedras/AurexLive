@@ -29,7 +29,7 @@
 
 ```text
 backend/                 # Node/Express 后端
-backend/config/runtime/  # 运行时 JSON 配置
+runtime/  # 运行时 JSON 配置
 frontend/                # React 前端（Vite）
 show_record/             # 历史演出记录 JSON
 uploads/                 # 上传文件目录
@@ -107,10 +107,10 @@ http://localhost:3000/docs/openapi.json
 
 ## 数据文件说明
 
-- `backend/config/runtime/musiclist.json`：当前节目单（播放页读取）
-- `backend/config/runtime/current_show.json`：当前演出状态
-- `backend/config/runtime/user_settings.json`：用户设置
-- `backend/config/runtime/live_state.json`：实时播控状态
+- `runtime/musiclist.json`：当前节目单（播放页读取）
+- `runtime/current_show.json`：当前演出状态
+- `runtime/user_settings.json`：用户设置
+- `runtime/live_state.json`：实时播控状态
 - `show_record/*.json`：按演出名称保存的历史节目单
 
 ## 说明
