@@ -116,11 +116,33 @@ function MusicPage() {
     [tracks, currentTrackId],
   )
 
+  const clearCurrentProgramInfo = async () => {
+    try {
+      if(currentProgramName !== '暂无节目' || currentPerformerName !== '暂无演出人员') {
+        // Call backend to clear current program and performer in the current show JSON
+        // Assuming an API method like clearCurrentProgramInfo or updateCurrentShow exists
+        await musicPageApi.updateCurrentProgram({ programName: null, performerName: null,clearCurrentProgram: true });
+        
+        setCurrentProgramName('暂无节目')
+        setCurrentPerformerName('暂无演出人员')
+      }
+    } catch (error) {
+      setMessage(`清除当前节目信息失败：${error.message}`);
+      // Fallback to local update if needed, or keep old values? 
+      // For now, we update locally even on error to match UI expectation, 
+      // but ideally, we might revert.
+      setCurrentProgramName('暂无节目')
+      setCurrentPerformerName('暂无演出人员')
+    }
+  }
+
   useEffect(() => {
     const backendSavedName = String(backendPlayback.currentTrack?.savedName || '').trim()
     if (!backendSavedName) {
       if (['idle', 'stopped'].includes(String(backendPlayback.state || '').trim())) {
         setCurrentTrackId(null)
+        // Clear performer and program name when playback finishes, and sync to backend
+        clearCurrentProgramInfo()
       }
       return
     }
@@ -129,7 +151,7 @@ function MusicPage() {
     if (matchedTrack) {
       setCurrentTrackId(matchedTrack.id)
     }
-  }, [backendPlayback, tracks])
+  }, [backendPlayback, tracks]) // Removed setters from dependency to avoid loops, handled inside function
 
   const playbackProgress = backendPlayback.progress || {}
   const playbackPositionLabel = formatProgressTime(playbackProgress.positionSec)
@@ -197,8 +219,8 @@ function MusicPage() {
       }
 
       setCurrentTrackId(null)
-      setCurrentProgramName('暂无节目')
-      setCurrentPerformerName('暂无演出人员')
+      // Reuse the clear logic or do it directly since show is closed
+      clearCurrentProgramInfo()
       setTracks([])
       await refreshPageData()
       setMessage(result.message || '当前演出已关闭')
