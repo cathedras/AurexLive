@@ -32,6 +32,7 @@ export function useMusicPageData({ musicPageApi, isPlaylistLocked, onPlaylistLoc
     errorMessage: '',
     currentTrack: null,
   })
+  const playStateRef = useRef(backendPlayback.state)
 
   useEffect(() => {
     messageRef.current = onMessage
@@ -241,5 +242,6 @@ export function useMusicPageData({ musicPageApi, isPlaylistLocked, onPlaylistLoc
     fetchBackendPlaybackState,
     fetchCurrentShow,
     updateRefreshMessage,
+    playStateRef,
   }
 }

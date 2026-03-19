@@ -34,6 +34,7 @@ import {
   openProgramSheetWindow,
   reorderTracks,
 } from '../services/musicPlay'
+import { use } from 'react'
 
 function MusicPage() {
   const [currentTrackId, setCurrentTrackId] = useState(null)
@@ -74,6 +75,7 @@ function MusicPage() {
     fetchBackendPlaybackState,
     fetchCurrentShow,
     updateRefreshMessage,
+    playStateRef,
   } = useMusicPageData({
     musicPageApi,
     isPlaylistLocked,
@@ -151,7 +153,7 @@ function MusicPage() {
     if (matchedTrack) {
       setCurrentTrackId(matchedTrack.id)
     }
-  }, [backendPlayback, tracks]) // Removed setters from dependency to avoid loops, handled inside function
+  }, [backendPlayback, tracks, playStateRef]) // Removed setters from dependency to avoid loops, handled inside function
 
   const playbackProgress = backendPlayback.progress || {}
   const playbackPositionLabel = formatProgressTime(playbackProgress.positionSec)
