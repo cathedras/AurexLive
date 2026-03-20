@@ -43,7 +43,9 @@ function FloatingAudioPlayerPanel({ playerState, backendPlayback, localProgress,
   // Helper to check if file is a video based on extension
   const isVideoFile = (fileName) => {
     if (!fileName) return false;
-    const videoExtensions = ['.mp4', '.webm', '.ogg', '.mov', '.avi', '.mkv'];
+    // Treat .webm as audio (some webm files contain only audio);
+    // keep common video-only extensions here
+    const videoExtensions = ['.mp4', '.ogg', '.mov', '.avi', '.mkv'];
     const ext = fileName.toLowerCase().substring(fileName.lastIndexOf('.'));
     return videoExtensions.includes(ext);
   };

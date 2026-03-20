@@ -6,8 +6,7 @@ node_modules/.bin/qrcode
 node_modules/.bin/tree-kill
 show_record/
 uploads/
-runtime/live_state.json
-.vscode/settings.json
-runtime/musiclist.json
-runtime/live_state.json
 runtime/
+.vscode/
+runtime/
+recordings/

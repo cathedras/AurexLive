@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const audioExtensions = ['.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac'];
+const audioExtensions = ['.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac', '.webm'];
 const videoExtensions = ['.mp4', '.mov', '.avi', '.wmv', '.flv', '.mkv'];
 
 function normalizeUploadFileName(originalName) {

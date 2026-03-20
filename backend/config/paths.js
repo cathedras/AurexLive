@@ -5,6 +5,7 @@ const projectRoot = path.join(__dirname, '..', '..');
 const uploadDir = path.join(projectRoot, 'uploads');
 const showRecordDir = path.join(projectRoot, 'show_record');
 const runtimeConfigDir = path.join(projectRoot, 'runtime');
+const recordingDir = path.join(projectRoot, 'recordings');
 const musicListJsonPath = path.join(runtimeConfigDir, 'musiclist.json');
 const currentShowJsonPath = path.join(runtimeConfigDir, 'current_show.json');
 const userSettingsJsonPath = path.join(runtimeConfigDir, 'user_settings.json');
@@ -47,18 +48,12 @@ function migrateLegacyRuntimeFiles() {
 }
 
 function ensureDirectories() {
-  if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true });
-    console.log(`已创建文件保存目录：${uploadDir}`);
-  }
-
-  if (!fs.existsSync(showRecordDir)) {
-    fs.mkdirSync(showRecordDir, { recursive: true });
-  }
-
-  if (!fs.existsSync(runtimeConfigDir)) {
-    fs.mkdirSync(runtimeConfigDir, { recursive: true });
-  }
+  [uploadDir, showRecordDir, runtimeConfigDir, recordingDir].forEach(dir => {
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+      console.log(`已创建目录：${dir}`);
+    }
+  });
 
   migrateLegacyRuntimeFiles();
 }
@@ -68,6 +63,7 @@ module.exports = {
   uploadDir,
   showRecordDir,
   runtimeConfigDir,
+  recordingDir,
   musicListJsonPath,
   currentShowJsonPath,
   userSettingsJsonPath,

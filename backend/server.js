@@ -3,6 +3,7 @@ const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const swaggerUi = require('swagger-ui-express');
+const http = require('http');
 
 const {
   uploadDir,
@@ -10,7 +11,8 @@ const {
   runtimeConfigDir,
   reactDistDir,
   frontendBuildMissingHtmlPath,
-  ensureDirectories
+  ensureDirectories,
+  recordingDir  // 添加录音目录
 } = require('./config/paths');
 const uploadRoutes = require('./routes/uploadRoutes');
 const fileRoutes = require('./routes/fileRoutes');
@@ -19,14 +21,28 @@ const aiRoutes = require('./routes/aiRoutes');
 const settingsRoutes = require('./routes/settingsRoutes');
 const liveRoutes = require('./routes/liveRoutes');
 const clientErrorRoutes = require('./routes/clientErrorRoutes');
+const recordingRoutes = require('./routes/recordingRoutes'); // 引入录音路由
 const musicPlaybackService = require('./services/musicPlaybackService');
 const requestLogger = require('./middleware/requestLogger');
 const { notFoundHandler, errorHandler } = require('./middleware/errorHandlers');
 const openApiSpec = require('./config/openapi');
 
-// 创建 express 应用
+// 创建 HTTP 服务器
 const app = express();
+const server = http.createServer(app);
 const port = 3000;
+
+// WebSocket 服务
+const WebSocket = require('ws');
+const wss = new WebSocket.Server({ server });
+
+wss.on('connection', (ws) => {
+  // 注册客户端
+  const clientId = require('./services/recordingService').registerClient(ws);
+  
+  // 发送客户端ID给前端
+  ws.send(JSON.stringify({ type: 'clientId', data: clientId }));
+});
 
 // 配置跨域（前端和后端端口不同时需要）
 app.use(cors());
@@ -56,17 +72,19 @@ app.use('/v1', aiRoutes);
 app.use('/v1', settingsRoutes);
 app.use('/v1', liveRoutes);
 app.use('/v1', clientErrorRoutes);
+app.use('/v1', recordingRoutes); // 注册录音路由
 
 // 7. 托管上传文件和前端静态文件
 app.use('/v1/uploads', express.static(uploadDir));
 app.use('/v1/show_record', express.static(showRecordDir));
+app.use('/v1/recordings', express.static(recordingDir)); // 托管录音文件
 
 const hasReactDist = fs.existsSync(reactDistDir);
 
 if (hasReactDist) {
   app.use(express.static(reactDistDir));
 
-  ['/page','/page/upload','/page/music','/page/settings'].forEach((routePath) => {
+  ['/page','/page/upload','/page/music','/page/settings', '/page/recording'].forEach((routePath) => {
     app.get(routePath, (req, res) => {
       res.sendFile(path.join(reactDistDir, 'index.html'));
     });
@@ -85,7 +103,7 @@ app.use(notFoundHandler);
 app.use(errorHandler);
 
 // 启动服务器
-app.listen(port, () => {
+server.listen(port, () => {
   console.log(`============================================`);
   console.log(`文件传输服务已启动 ✅`);
   console.log(`访问地址：http://localhost:${port}`);
@@ -93,16 +111,18 @@ app.listen(port, () => {
   console.log(`原始接口文档：http://localhost:${port}/docs/openapi.json`);
   console.log(`上传文件保存路径：${uploadDir}`);
   console.log(`演出记录保存路径：${showRecordDir}`);
+  console.log(`录音文件保存路径：${recordingDir}`);
   console.log(`运行时配置路径：${runtimeConfigDir}`);
   console.log(`============================================`);
 
   musicPlaybackService.restoreFromRuntimeState()
     .then((state) => {
       if (state.currentTrack?.programName) {
-        console.log(`已恢复后端播放：${state.currentTrack.performer || '未知演出人'} - ${state.currentTrack.programName} (${state.state})`);
+        console.log(`\n⚠️  注意：检测到上次播放状态，当前播放: ${state.currentTrack.programName}`);
+        console.log(`如需清理上次播放状态，请删除 runtime/ 目录下的 playback_state.json\n`);
       }
     })
     .catch((error) => {
-      console.error(`恢复后端播放状态失败：${error.message}`);
+      console.warn(`⚠️  注意：未能恢复上次播放状态，将从空闲状态开始`);
     });
 });

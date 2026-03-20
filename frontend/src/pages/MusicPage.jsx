@@ -352,6 +352,7 @@ function MusicPage() {
       <div className="page-actions">
         <Link to="/page" className="back-link">返回首页</Link>
         <Link to="/page/settings" className="back-link">用户设置</Link>
+        <Link to="/page/recording" className="back-link">录音机</Link>
       </div>
 
       <h1>音乐播放</h1>

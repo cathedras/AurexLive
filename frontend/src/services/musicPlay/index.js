@@ -1,4 +1,7 @@
 export { downloadBlobFile, openProgramSheetWindow } from './programSheetService'
+export * from './storageService';
+export * from './trackService';
+export * from './recordService'; // 导出录音服务
 export {
   buildEditedTrackList,
   buildMusicListSavePayload,

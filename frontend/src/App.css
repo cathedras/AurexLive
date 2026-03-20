@@ -477,6 +477,283 @@ h1 {
   min-height: 20px;
 }
 
+/* Recording page styles */
+.recorder-card {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+  padding: 28px 22px;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.recorder-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.recorder-btn {
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 15px;
+  cursor: pointer;
+  border: 1px solid #07c160;
+  background: #07c160;
+  color: #fff;
+}
+
+.recorder-btn.recording {
+  background: #c14a4a;
+  border-color: #c14a4a;
+  color: #fff;
+}
+
+.recorder-error {
+  color: #c14a4a;
+  background: #fff6f6;
+  border: 1px solid #f2d8d8;
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  text-align: center;
+}
+
+.recording-timer {
+  color: #07c160;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.volume-visualizer-card {
+  margin-top: 12px;
+  background: #f7fffb;
+  border: 1px solid #e6f7ee;
+  border-radius: 8px;
+  padding: 10px 8px;
+}
+
+.volume-canvas {
+  width: 100% !important;
+  max-width: 600px;
+  height: 100px !important;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  display: block;
+  margin: 0 auto 8px auto;
+}
+
+.volume-level {
+  color: #0b7a47;
+  font-size: 13px;
+  text-align: center;
+}
+
+.recording-list-card {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+  padding: 18px;
+  margin-bottom: 24px;
+}
+
+.recording-list-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: #222;
+  margin-bottom: 14px;
+  text-align: left;
+}
+
+.recording-list-ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.recording-item-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #fafafa;
+  border-radius: 10px;
+  padding: 12px;
+  transition: box-shadow 0.15s, border-color 0.15s;
+  border: 1px solid #f0f0f0;
+  gap: 12px;
+}
+
+.recording-item-card:hover {
+  box-shadow: 0 6px 20px rgba(7,193,96,0.06);
+  border-color: #e6f7ee;
+}
+
+.recording-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.recording-name {
+  color: #222;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recording-date,
+.recording-size {
+  color: #888;
+  font-size: 12px;
+}
+
+.recording-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.btn-delete {
+  background: #fff6f6;
+  color: #c14a4a;
+  border: 1px solid #f2d8d8;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-delete:hover {
+  background: #fbeaea;
+}
+
+/* Ensure anchor download buttons look like buttons */
+a.btn-play,
+a.btn-play:visited {
+  display: inline-block;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  text-decoration: none;
+  text-align: center;
+}
+
+a.btn-play.home-link-btn-secondary {
+  background: #fff;
+  color: #07c160;
+  border: 1px solid #07c160;
+}
+
+a.btn-play.home-link-btn-secondary:hover {
+  background: #f0fff8;
+}
+
+a.btn-play.home-link-btn {
+  background: #07c160;
+  color: #fff;
+  border: 1px solid #07c160;
+}
+
+@media (max-width: 640px) {
+  .recording-item-card {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .recording-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
+
+/* Unified recording list buttons to match recorder control */
+.recording-actions .btn-play,
+.recording-actions .btn-play:visited,
+.recording-actions .btn-play:active {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 84px;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  text-decoration: none;
+}
+
+/* primary: 试听 */
+.recording-actions .btn-play.home-link-btn {
+  background: linear-gradient(180deg,#07c160,#06b058);
+  border: 1px solid #06b058;
+  color: #fff;
+}
+.recording-actions .btn-play.home-link-btn:hover { background: linear-gradient(180deg,#08c86a,#07b85a); }
+
+/* secondary: 下载 */
+.recording-actions .btn-play.home-link-btn-secondary {
+  background: #fff;
+  border: 1px solid #07c160;
+  color: #07c160;
+}
+.recording-actions .btn-play.home-link-btn-secondary:hover { background: #f0fff8; }
+
+/* danger: 删除 */
+.recording-actions .btn-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 84px;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  border: 1px solid #f2d8d8;
+  background: #fff6f6;
+  color: #c14a4a;
+}
+.recording-actions .btn-delete:hover { background: #fbeaea; }
+
+@media (max-width: 640px) {
+  .recording-actions .btn-play,
+  .recording-actions .btn-delete {
+    min-width: 72px;
+    height: 36px;
+    font-size: 13px;
+  }
+}
+
+/* Icon sizing inside recording buttons */
+.recording-actions svg,
+.recorder-controls svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+
+.recording-actions .btn-play,
+.recording-actions .btn-delete,
+.recorder-controls .recorder-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.recorder-controls .recorder-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
 .file-list-wrap {
   margin-top: 28px;
   border-top: 1px solid #f0f0f0;
@@ -1681,14 +1958,17 @@ h1 {
 
 .floating-audio-player-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
   padding: 14px 14px 10px;
+  flex-wrap: nowrap;
 }
 
 .floating-audio-player-meta {
   min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
 }
 
 .floating-audio-player-title {
@@ -1719,6 +1999,7 @@ h1 {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  flex: 0 0 auto;
 }
 
 .floating-audio-player-btn {
@@ -1886,4 +2167,156 @@ h1 {
   border-color: #ddd;
   background: #fff;
   color: #333;
+}
+.recorder-card {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+  padding: 32px 24px 24px 24px;
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.recorder-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.recorder-btn.recording {
+  background: #c14a4a;
+  border-color: #c14a4a;
+  color: #fff;
+}
+
+.recorder-error {
+  color: #c14a4a;
+  background: #fff6f6;
+  border: 1px solid #f2d8d8;
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.recording-timer {
+  color: #07c160;
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.volume-visualizer-card {
+  margin-top: 12px;
+  background: #f7fffb;
+  border: 1px solid #e6f7ee;
+  border-radius: 8px;
+  padding: 12px 8px 8px 8px;
+}
+
+.volume-canvas {
+  width: 100% !important;
+  max-width: 600px;
+  height: 100px !important;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  display: block;
+  margin: 0 auto 8px auto;
+}
+
+.volume-level {
+  color: #0b7a47;
+  font-size: 13px;
+  text-align: center;
+}
+
+.recording-list-card {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+  padding: 24px 18px;
+  margin-bottom: 24px;
+}
+
+.recording-list-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: #222;
+  margin-bottom: 16px;
+  text-align: left;
+}
+
+.recording-list-ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.recording-item-card {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #f0f0f0;
+  padding: 12px 0;
+  gap: 8px;
+}
+
+.recording-item-card:last-child {
+  border-bottom: none;
+}
+
+.recording-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 180px;
+}
+
+.recording-name {
+  color: #222;
+  font-weight: 500;
+}
+
+.recording-date, .recording-size {
+  color: #888;
+  font-size: 12px;
+}
+
+.recording-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-delete {
+  background: #fff6f6;
+  color: #c14a4a;
+  border: 1px solid #f2d8d8;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-delete:hover {
+  background: #fbeaea;
+}
+a.btn-play.home-link-btn-secondary,
+a.btn-play.home-link-btn-secondary:visited {
+  display: inline-block;
+  background: #fff;
+  color: #07c160;
+  border: 1px solid #07c160;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 14px;
+  text-decoration: none;
+  transition: background 0.2s;
+  text-align: center;
+}
+
+a.btn-play.home-link-btn-secondary:hover {
+  background: #f0fff8;
+  color: #07c160;
 }
