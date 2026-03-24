@@ -199,44 +199,98 @@ export const connectRecordingSocket = (onVolume, onOpen, onClose, onGenericMessa
   }
 
   const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
-  // Try to connect to backend API host/port. In dev the frontend runs on 5173/5174
-  // while backend listens on 3000. Use VITE_API_PORT if set, otherwise default to 3000.
   const apiPort = import.meta.env.VITE_API_PORT || '3000';
   const host = location.hostname || 'localhost';
-  const wsUrl = `${scheme}://${host}:${apiPort}`;
-  const ws = new WebSocket(wsUrl);
-  _recordingWs = ws;
+
+  // Build attempt list: primary backend port, then location.host (may include dev proxy port), then bare hostname
+  const attemptUrls = [
+    `${scheme}://${host}:${apiPort}`,
+    `${scheme}://${location.host}`,
+    `${scheme}://${location.hostname}`
+  ];
+
   _wsVolumeHandler = onVolume;
   _wsGenericHandler = onGenericMessage;
 
-  ws.onopen = (ev) => {
-    onOpen && onOpen(ev);
-  };
+  let attemptIndex = 0;
+  let localTimeout = null;
 
-  ws.onmessage = (ev) => {
+  const tryConnect = (url) => {
     try {
-      const msg = JSON.parse(ev.data);
-      if (!msg || !msg.type) return;
-      if (msg.type === 'volume') {
-        onVolume && onVolume(msg.data);
-      } else {
-        _wsGenericHandler && _wsGenericHandler(msg);
-      }
+      const ws = new WebSocket(url);
+      // temporary handlers to detect success/failure
+      const clean = () => {
+        if (localTimeout) { clearTimeout(localTimeout); localTimeout = null; }
+      };
+
+      ws.onopen = (ev) => {
+        clean();
+        _recordingWs = ws;
+        ws.onmessage = (evm) => {
+          try {
+            const msg = JSON.parse(evm.data);
+            if (!msg || !msg.type) return;
+            if (msg.type === 'volume') {
+              onVolume && onVolume(msg.data);
+            } else {
+              _wsGenericHandler && _wsGenericHandler(msg);
+            }
+          } catch (e) {
+            console.error('Invalid WS message', e);
+          }
+        };
+
+        ws.onclose = (evm) => {
+          _recordingWs = null;
+          onClose && onClose(evm);
+        };
+
+        ws.onerror = (evm) => {
+          console.error('Recording WS error', evm);
+        };
+
+        onOpen && onOpen(ev);
+      };
+
+      ws.onerror = () => {
+        clean();
+        // try next URL
+        tryNext();
+      };
+
+      // if neither open nor error within timeout, treat as failure and try next
+      localTimeout = setTimeout(() => {
+        try { ws.close(); } catch (e) {}
+        tryNext();
+      }, 3000);
+
+      return ws;
     } catch (e) {
-      console.error('Invalid WS message', e);
+      // immediate error, try next
+      tryNext();
     }
   };
 
-  ws.onclose = (ev) => {
-    _recordingWs = null;
-    onClose && onClose(ev);
+  const tryNext = () => {
+    attemptIndex += 1;
+    if (attemptIndex >= attemptUrls.length) {
+      // give up
+      onClose && onClose(new Event('error'));
+      return null;
+    }
+    // start next attempt
+    return tryConnect(attemptUrls[attemptIndex]);
   };
 
-  ws.onerror = (ev) => {
-    console.error('Recording WS error', ev);
-  };
+  // start first attempt
+  tryConnect(attemptUrls[attemptIndex]);
 
-  return ws;
+  return {
+    // minimal facade to allow callers to call .close()
+    close: () => { try { if (_recordingWs) _recordingWs.close(); } catch (e) {} },
+    send: (data) => { try { if (_recordingWs) _recordingWs.send(data); } catch (e) {} },
+    readyState: () => (_recordingWs ? _recordingWs.readyState : WebSocket.CLOSED)
+  };
 };
 
 // send a command and wait for a `${type}-result` response (simple correlation)
