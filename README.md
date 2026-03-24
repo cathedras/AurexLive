@@ -1,9 +1,83 @@
 # 演出中台
 
 一个基于 `Express + React(Vite)` 的演出管理与播控小系统，支持文件上传、节目单维护、主持人口播词生成、当前演出展示与 PDF 导出。
+## 后端：从系统输出录音（可选）
+
+本项目后端可以集成“捕获主机系统输出音频并保存/分析”的能力。该功能依赖主机具备音频子系统或虚拟音频设备（适用于 macOS 开发机或带音频硬件/虚拟设备的服务器）。主要要点：
+
+
+```
+## 音频播放（mpv）— 安装与使用（跨平台）
+
+`mpv` 是一款轻量且命令行友好的跨平台媒体播放器，常用于开发和脚本化播放场景。下面为常见平台的安装与快速用法：
+
+- 安装：
+  - macOS: `brew install mpv`
+  - Windows: `choco install mpv` 或 `scoop install mpv`，也可从 https://mpv.io/ 下载二进制或安装包
+  - Linux: Debian/Ubuntu: `sudo apt install mpv`；Arch: `sudo pacman -S mpv`；Fedora: `sudo dnf install mpv`
+
+- 常用示例：
+  - 播放文件（包含 MOV）：
+
+    ```bash
+    mpv /path/to/file.mov
+    # 仅播放音频流（忽略视频）
+    mpv --no-video /path/to/file.mov
+    ```
+
+  - 后台播放（Unix）：
+
+    ```bash
+    mpv --no-video --loop=inf /path/to/file &
+    ```
+
+    Windows 下可用 PowerShell：
+
+    ```powershell
+    Start-Process -NoNewWindow -FilePath mpv -ArgumentList '--no-video','C:\path\to\file.mov'
+    ```
+
+  - 列出可用音频输出设备、并指定设备：
+
+    ```bash
+    mpv --audio-device=help
+    mpv --audio-device=<device_name> /path/to/file.wav
+    ```
+
+  - 远程/程序控制：开启 IPC Socket，供后端进程或脚本发送控制命令：
+
+    ```bash
+    mpv --input-ipc-server=/tmp/mpv-socket /path/to/file.mov
+    # Windows 命名管道示例： \\\\.\\pipe\\mpv-socket
+    ```
+
+- 集成要点：
+  - 若希望将 `mpv` 播放的音频捕获到后端（例如由 `ffmpeg` 采集），请将系统音频输出或 `mpv` 的输出设备设为虚拟回环设备（BlackHole / VB-Cable / PulseAudio null sink 等）。
+  - `mpv` 使用内置的 ffmpeg/libav 处理媒体容器（如 MOV），建议同时安装系统级 `ffmpeg` 以确保所有转码/捕获工具可用。
+  - 对于无头服务器，请确保音频子系统（PulseAudio/ALSA/pipewire）已正确配置，或使用虚拟设备。
+
+## 部署建议（PM2 + Nginx）
+- macOS 上常用的虚拟音频设备：BlackHole、Loopback、Soundflower。将系统输出路由到虚拟设备后，`ffmpeg` 可把该设备作为输入捕获。
+
+- 列出 macOS 可用设备（用于确认设备名/索引）：
+```bash
+ffmpeg -f avfoundation -list_devices true -i ""
+```
+
+- 捕获实现思路（后端）
+  - 基于 PCM（s16le 或浮点）计算 RMS 得到实时音量；不要对已编码的块直接计算音量。
+  - 停止录制时要先终止 `ffmpeg`，等待文件完成写入再返回下载链接或记录。
+
+- 权限与限制
+  - macOS 可能要求为应用/终端授予“麦克风”权限以访问虚拟设备。
+  - 仅在运行主机具备音频输入或已安装虚拟回环设备时可行。云服务器常常没有音频硬件，需先安装/配置虚拟设备或在本地执行捕获。
+
+如果你希望我直接在 `backend/services/recordingService.js` 中加入一个可选的 `ffmpeg` 启动/停止实现（包含 PCM 实时音量分析与文件保存），我可以基于当前服务提交补丁并附带使用说明。
+# 演出中台
+
+一个基于 `Express + React(Vite)` 的演出管理与播控小系统，支持文件上传、节目单维护、主持人口播词生成、当前演出展示与 PDF 导出。
 
 ## 功能概览
-
 - 文件上传与列表查看（支持音频文件）
 - 音乐播放页节目单管理
   - 新增节目
@@ -20,7 +94,6 @@
 - 首页展示
   - 当前表演节目
   - 视频直播占位窗口（前端占位图）
-  - 节目名/演出人员滚动展示
 - 节目单导出
   - 一键导出 PDF
   - 打印节目单
@@ -36,7 +109,6 @@ uploads/                 # 上传文件目录
 README.md                # 项目说明
 ```
 
-## 快速开始
 
 ### 1) 安装依赖
 

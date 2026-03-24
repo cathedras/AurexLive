@@ -88,6 +88,22 @@ export const getRecordingList = async () => {
 };
 
 /**
+ * 列举可用设备（后端 probe）
+ */
+export const listRecordingDevices = async () => {
+  try {
+    const response = await fetch(`${BASE_URL}/list-devices`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    return await response.json();
+  } catch (error) {
+    console.error('列出设备失败:', error);
+    throw error;
+  }
+};
+
+/**
  * 删除录音文件
  */
 export const deleteRecording = async (filename) => {
@@ -105,4 +121,192 @@ export const deleteRecording = async (filename) => {
     console.error('删除录音失败:', error);
     throw error;
   }
+};
+
+/**
+ * 后端启动录音（由服务器上的 ffmpeg 执行）
+ */
+export const startRecordingBackend = async ({ clientId, device, outFileName, ffmpegArgs } = {}) => {
+  try {
+    const body = { clientId, device, outFileName, ffmpegArgs };
+    const response = await fetch(`${BASE_URL}/start-recording-backend`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return await response.json();
+  } catch (error) {
+    console.error('后端开始录音失败:', error);
+    throw error;
+  }
+};
+
+export const stopRecordingBackend = async (fileName) => {
+  try {
+    const response = await fetch(`${BASE_URL}/stop-recording-backend`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fileName }),
+    });
+    return await response.json();
+  } catch (error) {
+    console.error('后端停止录音失败:', error);
+    throw error;
+  }
+};
+
+/**
+ * 使用 SSE 订阅后端推送的音量/PCM 事件
+ * onVolume: function(eventData)
+ * 返回一个对象 { es, close() }
+ */
+export const subscribeRecordingSSE = (fileName, onVolume, onOpen, onError) => {
+  const url = `${BASE_URL}/recording-sse/${encodeURIComponent(fileName)}`;
+  const es = new EventSource(url);
+
+  es.addEventListener('volume', (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      onVolume && onVolume(data);
+    } catch (err) {
+      console.error('解析 volume 事件失败', err);
+    }
+  });
+
+  es.onopen = (ev) => onOpen && onOpen(ev);
+  es.onerror = (ev) => onError && onError(ev);
+
+  return {
+    es,
+    close: () => {
+      try { es.close(); } catch (e) {}
+    }
+  };
+};
+
+// ------------------------------
+// WebSocket helpers for recording
+// ------------------------------
+let _recordingWs = null;
+let _wsVolumeHandler = null;
+let _wsGenericHandler = null;
+
+export const connectRecordingSocket = (onVolume, onOpen, onClose, onGenericMessage) => {
+  if (_recordingWs && _recordingWs.readyState === WebSocket.OPEN) {
+    _wsVolumeHandler = onVolume;
+    _wsGenericHandler = onGenericMessage;
+    return _recordingWs;
+  }
+
+  const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
+  // Try to connect to backend API host/port. In dev the frontend runs on 5173/5174
+  // while backend listens on 3000. Use VITE_API_PORT if set, otherwise default to 3000.
+  const apiPort = import.meta.env.VITE_API_PORT || '3000';
+  const host = location.hostname || 'localhost';
+  const wsUrl = `${scheme}://${host}:${apiPort}`;
+  const ws = new WebSocket(wsUrl);
+  _recordingWs = ws;
+  _wsVolumeHandler = onVolume;
+  _wsGenericHandler = onGenericMessage;
+
+  ws.onopen = (ev) => {
+    onOpen && onOpen(ev);
+  };
+
+  ws.onmessage = (ev) => {
+    try {
+      const msg = JSON.parse(ev.data);
+      if (!msg || !msg.type) return;
+      if (msg.type === 'volume') {
+        onVolume && onVolume(msg.data);
+      } else {
+        _wsGenericHandler && _wsGenericHandler(msg);
+      }
+    } catch (e) {
+      console.error('Invalid WS message', e);
+    }
+  };
+
+  ws.onclose = (ev) => {
+    _recordingWs = null;
+    onClose && onClose(ev);
+  };
+
+  ws.onerror = (ev) => {
+    console.error('Recording WS error', ev);
+  };
+
+  return ws;
+};
+
+// send a command and wait for a `${type}-result` response (simple correlation)
+const wsSendCommand = (type, data, timeout = 5000) => {
+  return new Promise((resolve, reject) => {
+    if (!_recordingWs || _recordingWs.readyState !== WebSocket.OPEN) {
+      return reject(new Error('ws_not_connected'));
+    }
+
+    const handler = (msg) => {
+      try {
+        if (msg.type === `${type}-result`) {
+          _wsGenericHandler && _wsGenericHandler(msg);
+          resolve(msg);
+          // remove temporary listener
+          _wsGenericHandler = null;
+        }
+      } catch (e) {
+        // ignore
+      }
+    };
+
+    // inject a temporary generic handler to catch the result
+    const prev = _wsGenericHandler;
+    _wsGenericHandler = (m) => {
+      handler(m);
+      // restore previous
+      _wsGenericHandler = prev;
+    };
+
+    try {
+      _recordingWs.send(JSON.stringify({ type, data }));
+    } catch (e) {
+      _wsGenericHandler = prev;
+      return reject(e);
+    }
+
+    const to = setTimeout(() => {
+      _wsGenericHandler = prev;
+      reject(new Error('ws_timeout'));
+    }, timeout);
+    // wrap resolve to clear timeout
+    const origResolve = resolve;
+    resolve = (v) => { clearTimeout(to); origResolve(v); };
+  });
+};
+
+export const wsStartRecordingBackend = async ({ device, outFileName, ffmpegArgs } = {}) => {
+  const resp = await wsSendCommand('start-backend', { device, outFileName, ffmpegArgs });
+  return resp;
+};
+
+export const wsStopRecording = async (fileName) => {
+  const resp = await wsSendCommand('stop-recording', { fileName });
+  return resp;
+};
+
+export const wsStartRecording = async () => {
+  const resp = await wsSendCommand('start-recording', {});
+  return resp;
+};
+
+export const wsAddChunk = async (fileName, chunkBlob) => {
+  // convert blob to base64
+  const arrayBuffer = await chunkBlob.arrayBuffer();
+  const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+  const resp = await wsSendCommand('add-chunk', { fileName, chunkBase64: base64 });
+  return resp;
+};
+
+export const closeRecordingSocket = () => {
+  try { if (_recordingWs) _recordingWs.close(); } catch (e) {}
 };

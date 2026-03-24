@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useFloatingAudioPlayer } from '../component/FloatingAudioPlayer'
-import { getRecordingList, deleteRecording, startRecording, sendRecordingChunk } from '../services/musicPlay';
+import Modal from '../component/Modal'
+import { getRecordingList, deleteRecording, startRecording, sendRecordingChunk, startRecordingBackend, stopRecordingBackend, subscribeRecordingSSE, connectRecordingSocket, wsStartRecordingBackend, wsStopRecording, wsAddChunk } from '../services/musicPlay';
 import { Download, Headphones, Trash2, Play, Pause } from 'lucide-react'
 
 const RecordingPage = () => {
@@ -14,8 +15,13 @@ const RecordingPage = () => {
   const [loading, setLoading] = useState(false);
   const [currentRecordingFileName, setCurrentRecordingFileName] = useState(null);
   const [clientId, setClientId] = useState(null);
+  const [wsConnected, setWsConnected] = useState(false);
+  const [devices, setDevices] = useState([]);
+  const [selectedDevice, setSelectedDevice] = useState(null);
   const [volume, setVolume] = useState(0);
   const [ws, setWs] = useState(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const timerRef = useRef(null);
   const audioRef = useRef(null);
   const canvasRef = useRef(null);
@@ -41,38 +47,64 @@ const RecordingPage = () => {
   // 初始化录音状态
   useEffect(() => {
     loadRecordings();
-    
-    // 连接WebSocket获取实时音量数据
-    const websocket = new WebSocket(`ws://localhost:3000`);
-    
-    websocket.onopen = () => {
-      console.log('WebSocket连接已建立');
-    };
-    
-    websocket.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      
-      if (data.type === 'clientId') {
-        setClientId(data.data);
-      } else if (data.type === 'volume') {
-        setVolume(data.data.volume);
+
+    // fetch available devices from backend for platform-appropriate selection
+    (async () => {
+      try {
+        const devRes = await (await import('../services/musicPlay')).listRecordingDevices();
+        if (devRes && devRes.success) {
+          const raw = devRes.raw || '';
+          const plat = devRes.platform || '';
+          let parsed = [];
+
+          if (plat === 'darwin') {
+            // parse avfoundation audio devices section
+            const lines = raw.split(/\r?\n/);
+            let inAudio = false;
+            for (const line of lines) {
+              const l = line.trim();
+              if (!l) continue;
+              if (/AVFoundation audio devices/i.test(l)) {
+                inAudio = true;
+                continue;
+              }
+              if (/AVFoundation video devices/i.test(l)) {
+                inAudio = false;
+                continue;
+              }
+              if (inAudio) {
+                // match lines like: [..] [0] MacBook Air Microphone
+                const m = l.match(/\[(?:.*?)\]\s*\[(\d+)\]\s*(.+)$/);
+                if (m) {
+                  const idx = m[1];
+                  const name = m[2];
+                  parsed.push({ label: `${name} (index ${idx})`, value: `:${idx}` });
+                }
+              }
+            }
+          }
+
+          // fallback: if no parsed entries, show raw lines as options
+          if (parsed.length === 0) {
+            const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+            parsed = lines.map((l, i) => ({ label: l, value: l }));
+          }
+
+          setDevices(parsed);
+          if (parsed.length) setSelectedDevice(parsed[0].value);
+        }
+      } catch (e) {
+        // ignore device listing errors
       }
-    };
-    
-    websocket.onerror = (error) => {
-      console.error('WebSocket错误:', error);
-    };
-    
-    websocket.onclose = () => {
-      console.log('WebSocket连接已关闭');
-    };
-    
-    setWs(websocket);
-    
+    })();
+    // no-op: WebSocket will be connected when user clicks Start
+
     return () => {
-      if (websocket) {
-        websocket.close();
-      }
+      // close any open SSE/WebSocket stored in state
+      try {
+        if (ws && ws.close) ws.close();
+      } catch (e) {}
+
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
       }
@@ -134,55 +166,41 @@ const RecordingPage = () => {
       return;
     }
 
-    if (!clientId) {
-      setError('尚未连接到服务器');
-      return;
-    }
-
     setLoading(true);
     try {
-      // 调用后端API开始录音
-      const result = await startRecording(clientId);
-      if (!result.success) {
-        throw new Error(result.message);
+      // Connect WebSocket now that recording is requested
+      const socket = connectRecordingSocket(
+        (data) => { if (data && data.volume !== undefined) setVolume(data.volume || 0); },
+        () => setWsConnected(true),
+        () => setWsConnected(false),
+        (msg) => { if (msg?.type === 'clientId' && msg.data) setClientId(msg.data); }
+      );
+      setWs(socket);
+
+      // Tell backend to start recording (server-side capture) via WebSocket
+      const deviceArg = selectedDevice || null;
+      const res = await wsStartRecordingBackend({ device: deviceArg, outFileName: null, ffmpegArgs: null });
+      if (!res || !res.success) throw new Error((res && res.error) || 'start backend failed');
+
+      // set fileName and recording state from response
+      const { fileName } = (res && res.data) ? res.data : {};
+      if (fileName) {
+        setCurrentRecordingFileName(fileName);
+        setIsRecording(true);
+        setRecordingTime(0);
       }
 
-      const { fileName } = result.data;
-      setCurrentRecordingFileName(fileName);
-
-      setError('');
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      
-      const recorder = new MediaRecorder(stream);
-      setMediaRecorder(recorder);
-      setAudioChunks([]);
-
-      recorder.ondataavailable = async (event) => {
-        if (event.data.size > 0) {
-          // 发送音频数据块到后端
-          await sendAudioChunk(event.data, fileName);
-        }
-      };
-
-      recorder.onstop = async () => {
-        // 停止所有轨道
-        stream.getTracks().forEach(track => track.stop());
-        
-        // 刷新录音列表
-        loadRecordings();
-      };
-
-      recorder.start(1000); // 每秒触发一次dataavailable事件
-      setIsRecording(true);
-      setRecordingTime(0);
-
-      // 开始计时
+      // start timer
       timerRef.current = setInterval(() => {
         setRecordingTime(prev => prev + 1);
       }, 1000);
     } catch (err) {
       setError(`录音失败: ${err.message}`);
       console.error('录音错误:', err);
+      // cleanup ws
+      try { if (ws && ws.close) ws.close(); } catch (e) {}
+      setWs(null);
+      setWsConnected(false);
     } finally {
       setLoading(false);
     }
@@ -190,14 +208,39 @@ const RecordingPage = () => {
 
   // 停止录音
   const stopRecordingHandler = async () => {
-    if (mediaRecorder && isRecording) {
-      mediaRecorder.stop();
+    if (isRecording && currentRecordingFileName) {
+      try {
+        // ask backend to stop via WebSocket if available
+        if (ws && ws.send) {
+          try {
+            await wsStopRecording(currentRecordingFileName);
+          } catch (e) {
+            console.warn('ws stop failed, fallback to HTTP', e);
+            await stopRecordingBackend(currentRecordingFileName);
+          }
+        } else {
+          await stopRecordingBackend(currentRecordingFileName);
+        }
+      } catch (e) {
+        console.error('stop backend failed', e);
+      }
       setIsRecording(false);
-      
+      setVolume(0);
+
+      // close SSE
+      if (ws && ws.close) {
+        try { ws.close(); } catch (e) {}
+      }
+      setWs(null);
+      setWsConnected(false);
+
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
       }
+
+      // refresh recordings
+      loadRecordings();
     }
   };
 
@@ -223,9 +266,23 @@ const RecordingPage = () => {
   };
 
   const confirmDeleteRecording = (filename) => {
-    const ok = window.confirm('确认删除该录音吗？此操作不可恢复。');
-    if (!ok) return;
-    deleteRecordingItem(filename);
+    setDeleteTarget(filename);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleteDialogOpen(false);
+    try {
+      await deleteRecordingItem(deleteTarget);
+    } finally {
+      setDeleteTarget(null);
+    }
+  };
+
+  const handleCancelDelete = () => {
+    setDeleteDialogOpen(false);
+    setDeleteTarget(null);
   };
 
   // 播放录音
@@ -271,18 +328,42 @@ const RecordingPage = () => {
 
       <h1>录音机</h1>
 
+      <Modal open={deleteDialogOpen} title="确认删除" onClose={handleCancelDelete} footer={
+        <>
+          <button className="row-icon-btn" onClick={handleCancelDelete}>取消</button>
+          <button className="row-icon-btn row-icon-btn-delete" onClick={handleConfirmDelete}>删除</button>
+        </>
+      }>
+        <p>确认删除该录音吗？此操作不可恢复。</p>
+      </Modal>
+
       <div className="recorder-card home-panel">
         {error && <div className="recorder-error">{error}</div>}
         <div className="recorder-controls">
           <button
             className={`recorder-btn home-link-btn${isRecording ? ' recording' : ''}`}
-            onClick={isRecording ? stopRecordingHandler : startRecordingHandler}
-            disabled={!checkSupport() || loading || !clientId}
+              onClick={isRecording ? stopRecordingHandler : startRecordingHandler}
+              disabled={!checkSupport() || loading}
             aria-label={isRecording ? '停止录音' : '开始录音'}
           >
             {isRecording ? <Pause width={14} height={14} /> : <Play width={14} height={14} />}
             <span style={{ marginLeft: 8 }}>{loading ? '处理中...' : (isRecording ? '停止录音' : '开始录音')}</span>
           </button>
+          <div style={{ marginLeft: 12 }}>
+            <label style={{ display: 'block', fontSize: 12, marginBottom: 6 }}>选择录音设备（原始输出）</label>
+            <select value={selectedDevice || ''} onChange={(e) => setSelectedDevice(e.target.value)} disabled={isRecording || loading}>
+              {devices.length === 0 && <option value="">默认设备</option>}
+              {devices.map((d, idx) => (
+                <option key={idx} value={d.value}>{d.label.length > 120 ? d.label.substring(0, 120) + '…' : d.label}</option>
+              ))}
+            </select>
+          </div>
+          <div style={{ marginLeft: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ fontSize: 12, color: wsConnected ? '#0a0' : '#a00' }}>
+              WS: {wsConnected ? '已连接' : '未连接'}
+            </div>
+            {clientId && <div style={{ fontSize: 12 }}>clientId: {clientId}</div>}
+          </div>
           {isRecording && (
             <span className="recording-timer">录制时间: {formatTime(recordingTime)}</span>
           )}

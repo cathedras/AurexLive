@@ -13,6 +13,13 @@
         "NODE_ENV": "development"
       },
       "cwd": "${workspaceFolder}/backend"
+    },
+    {
+      "type": "editor-browser",
+      "request": "launch",
+      "name": "Debug Frontend in Local Browser",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}/frontend"
     }
   ]
 }
