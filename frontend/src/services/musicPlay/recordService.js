@@ -195,7 +195,11 @@ export const connectRecordingSocket = (onVolume, onOpen, onClose, onGenericMessa
   if (_recordingWs && _recordingWs.readyState === WebSocket.OPEN) {
     _wsVolumeHandler = onVolume;
     _wsGenericHandler = onGenericMessage;
-    return _recordingWs;
+    return Promise.resolve({
+      close: () => { try { if (_recordingWs) _recordingWs.close(); } catch (e) {} },
+      send: (data) => { try { if (_recordingWs) _recordingWs.send(data); } catch (e) {} },
+      readyState: () => (_recordingWs ? _recordingWs.readyState : WebSocket.CLOSED)
+    });
   }
 
   const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
@@ -212,85 +216,95 @@ export const connectRecordingSocket = (onVolume, onOpen, onClose, onGenericMessa
   _wsVolumeHandler = onVolume;
   _wsGenericHandler = onGenericMessage;
 
-  let attemptIndex = 0;
-  let localTimeout = null;
 
-  const tryConnect = (url) => {
-    try {
-      const ws = new WebSocket(url);
-      // temporary handlers to detect success/failure
-      const clean = () => {
-        if (localTimeout) { clearTimeout(localTimeout); localTimeout = null; }
-      };
 
-      ws.onopen = (ev) => {
-        clean();
-        _recordingWs = ws;
-        ws.onmessage = (evm) => {
-          try {
-            const msg = JSON.parse(evm.data);
-            if (!msg || !msg.type) return;
-            if (msg.type === 'volume') {
-              onVolume && onVolume(msg.data);
-            } else {
-              _wsGenericHandler && _wsGenericHandler(msg);
-            }
-          } catch (e) {
-            console.error('Invalid WS message', e);
-          }
-        };
 
-        ws.onclose = (evm) => {
-          _recordingWs = null;
-          onClose && onClose(evm);
-        };
 
-        ws.onerror = (evm) => {
-          console.error('Recording WS error', evm);
-        };
 
-        onOpen && onOpen(ev);
-      };
 
-      ws.onerror = () => {
-        clean();
-        // try next URL
-        tryNext();
-      };
 
-      // if neither open nor error within timeout, treat as failure and try next
-      localTimeout = setTimeout(() => {
-        try { ws.close(); } catch (e) {}
-        tryNext();
-      }, 3000);
 
-      return ws;
-    } catch (e) {
-      // immediate error, try next
-      tryNext();
-    }
-  };
 
-  const tryNext = () => {
-    attemptIndex += 1;
-    if (attemptIndex >= attemptUrls.length) {
-      // give up
-      onClose && onClose(new Event('error'));
-      return null;
-    }
-    // start next attempt
-    return tryConnect(attemptUrls[attemptIndex]);
-  };
 
   // start first attempt
-  tryConnect(attemptUrls[attemptIndex]);
 
-  return {
-    // minimal facade to allow callers to call .close()
-    close: () => { try { if (_recordingWs) _recordingWs.close(); } catch (e) {} },
-    send: (data) => { try { if (_recordingWs) _recordingWs.send(data); } catch (e) {} },
-    readyState: () => (_recordingWs ? _recordingWs.readyState : WebSocket.CLOSED)
-  };
+  // return a promise that resolves when a connection is established or rejects after attempts
+  return new Promise((resolve, reject) => {
+    let finished = false;
+
+    const wrapOnOpen = (ev) => {
+      finished = true;
+      try { onOpen && onOpen(ev); } catch (e) {}
+      const facade = {
+        close: () => { try { if (_recordingWs) _recordingWs.close(); } catch (e) {} },
+        send: (data) => { try { if (_recordingWs) _recordingWs.send(data); } catch (e) {} },
+        readyState: () => (_recordingWs ? _recordingWs.readyState : WebSocket.CLOSED)
+      };
+      resolve(facade);
+    };
+
+    const wrapOnClose = (ev) => {
+      try { onClose && onClose(ev); } catch (e) {}
+      if (!finished) {
+        finished = true;
+        reject(new Error('ws_connect_failed'));
+      }
+    };
+
+    _wsVolumeHandler = onVolume;
+    _wsGenericHandler = onGenericMessage;
+
+    // attempt connections sequentially with timeout
+    let ai = 0;
+    const tryNextUrl = () => {
+      if (ai >= attemptUrls.length) {
+        wrapOnClose(new Event('error'));
+        return;
+      }
+      const url = attemptUrls[ai++];
+      try {
+        const ws = new WebSocket(url);
+        let localTimeout = null;
+
+        ws.onopen = (ev) => {
+          if (localTimeout) { clearTimeout(localTimeout); localTimeout = null; }
+          _recordingWs = ws;
+          ws.onmessage = (evm) => {
+            try {
+              const msg = JSON.parse(evm.data);
+              if (!msg || !msg.type) return;
+              if (msg.type === 'volume') {
+                onVolume && onVolume(msg.data);
+              } else {
+                _wsGenericHandler && _wsGenericHandler(msg);
+              }
+            } catch (e) {
+              console.error('Invalid WS message', e);
+            }
+          };
+          ws.onclose = (evm) => { _recordingWs = null; try { onClose && onClose(evm); } catch (e) {} };
+          ws.onerror = (evm) => { console.error('Recording WS error', evm); };
+          wrapOnOpen(ev);
+        };
+
+        ws.onerror = () => {
+          if (localTimeout) { clearTimeout(localTimeout); localTimeout = null; }
+          try { ws.close(); } catch (e) {}
+          // try next url
+          tryNextUrl();
+        };
+
+        localTimeout = setTimeout(() => {
+          try { ws.close(); } catch (e) {}
+          tryNextUrl();
+        }, 3000);
+      } catch (e) {
+        tryNextUrl();
+      }
+    };
+
+    tryNextUrl();
+  });
 };
 
 // send a command and wait for a `${type}-result` response (simple correlation)

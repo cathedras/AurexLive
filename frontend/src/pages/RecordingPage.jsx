@@ -169,13 +169,14 @@ const RecordingPage = () => {
     setLoading(true);
     try {
       // Connect WebSocket now that recording is requested
-      const socket = connectRecordingSocket(
+      const socket = await connectRecordingSocket(
         (data) => { if (data && data.volume !== undefined) setVolume(data.volume || 0); },
         () => setWsConnected(true),
         () => setWsConnected(false),
         (msg) => { if (msg?.type === 'clientId' && msg.data) setClientId(msg.data); }
       );
       setWs(socket);
+      setWsConnected(true);
 
       // Tell backend to start recording (server-side capture) via WebSocket
       const deviceArg = selectedDevice || null;
