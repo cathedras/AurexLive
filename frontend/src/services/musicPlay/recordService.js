@@ -308,7 +308,7 @@ export const connectRecordingSocket = (onVolume, onOpen, onClose, onGenericMessa
 };
 
 // send a command and wait for a `${type}-result` response (simple correlation)
-const wsSendCommand = (type, data, timeout = 5000) => {
+const wsSendCommand = (type, data, timeout = 15000) => {
   return new Promise((resolve, reject) => {
     if (!_recordingWs || _recordingWs.readyState !== WebSocket.OPEN) {
       return reject(new Error('ws_not_connected'));
