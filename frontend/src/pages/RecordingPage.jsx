@@ -167,6 +167,8 @@ const RecordingPage = () => {
     }
 
     setLoading(true);
+      // clear any previous errors when user retries
+      setError('');
     try {
       // Connect WebSocket now that recording is requested
       const socket = await connectRecordingSocket(
