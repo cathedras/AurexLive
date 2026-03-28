@@ -32,66 +32,9 @@ const app = express();
 const server = http.createServer(app);
 const port = 3000;
 
-// WebSocket 服务
-const WebSocket = require('ws');
-const recordingService = require('./services/recordingService');
-const wss = new WebSocket.Server({ server });
-
-wss.on('connection', (ws) => {
-  // 注册客户端并绑定消息处理
-  const clientId = recordingService.registerClient(ws);
-  // 发送客户端ID给前端
-  try { ws.send(JSON.stringify({ type: 'clientId', data: clientId })); } catch (e) {}
-
-  ws.on('message', async (message) => {
-    // 支持二进制和文本
-    let payload = null;
-    if (Buffer.isBuffer(message)) {
-      // 若收到二进制，直接当作音频 chunk（二进制）需要额外约定字段，跳过自动处理
-      // 可扩展：将二进制 chunk 与元数据组合发送
-      return;
-    }
-
-    try {
-      payload = JSON.parse(message.toString());
-    } catch (e) {
-      try { ws.send(JSON.stringify({ type: 'error', data: 'invalid_json' })); } catch (e) {}
-      return;
-    }
-
-    const { type, data } = payload || {};
-    try {
-      if (type === 'start-backend') {
-        const { device, outFileName, ffmpegArgs } = data || {};
-        const info = recordingService.startRecordingWithFfmpeg(clientId, ffmpegArgs, outFileName || null);
-        try { ws.send(JSON.stringify({ type: 'start-backend-result', success: true, data: info })); } catch (e) {}
-      } else if (type === 'stop-recording') {
-        const { fileName } = data || {};
-        const info = recordingService.stopRecording(fileName);
-        try { ws.send(JSON.stringify({ type: 'stop-recording-result', success: true, data: info })); } catch (e) {}
-      } else if (type === 'start-recording') {
-        const info = recordingService.startRecording(clientId);
-        try { ws.send(JSON.stringify({ type: 'start-recording-result', success: true, data: info })); } catch (e) {}
-      } else if (type === 'add-chunk') {
-        // data: { fileName, chunkBase64 }
-        const { fileName, chunkBase64 } = data || {};
-        if (fileName && chunkBase64) {
-          const buf = Buffer.from(chunkBase64, 'base64');
-          recordingService.addRecordingChunk(fileName, buf);
-          try { ws.send(JSON.stringify({ type: 'add-chunk-result', success: true })); } catch (e) {}
-        } else {
-          try { ws.send(JSON.stringify({ type: 'add-chunk-result', success: false, error: 'missing_params' })); } catch (e) {}
-        }
-      } else if (type === 'get-status') {
-        const { fileName } = data || {};
-        const status = recordingService.getStatus(fileName);
-        try { ws.send(JSON.stringify({ type: 'get-status-result', success: true, data: status })); } catch (e) {}
-      }
-    } catch (err) {
-      try { ws.send(JSON.stringify({ type: `${type}-result`, success: false, error: err.message })); } catch (e) {}
-    }
-  });
-});
+// WebSocket 服务（已抽离到 backend/wsServer.js）
+const initWebSocket = require('./wsServer');
+initWebSocket(server);
 
 // 配置跨域（前端和后端端口不同时需要）
 app.use(cors());

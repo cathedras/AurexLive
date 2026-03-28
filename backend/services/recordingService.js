@@ -3,6 +3,7 @@ const path = require('path');
 const { spawn, spawnSync } = require('child_process');
 const EventEmitter = require('events');
 const { recordingDir } = require('../config/paths');
+const wsClientService = require('./wsClientService');
 
 // ffmpeg args for a null-output astats/ametadata monitor (used to extract RMS levels)
 const ASTATS_MONITOR_ARGS = ['-map', '0:a', '-af', 'astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level:file=-', '-f', 'null', '-'];
@@ -25,54 +26,15 @@ function resolveFfmpegPath() {
 class RecordingService {
   constructor() {
     this.activeRecordings = new Map(); // 存储活动录音的状态
-    this.clients = new Map(); // 存储WebSocket客户端
-    this.nextClientId = 1;
-    this.emitter = new EventEmitter();
   }
 
-  // 注册WebSocket客户端
-  registerClient(ws) {
-    const clientId = this.nextClientId++;
-    this.clients.set(clientId, ws);
-
-    ws.on('close', () => {
-      this.clients.delete(clientId);
-      // 检查是否有与此客户端关联的录音
-      for (const [fileName, recordingInfo] of this.activeRecordings.entries()) {
-        if (recordingInfo.clientId === clientId) {
-          this.stopRecording(fileName);
-        }
-      }
-    });
-
-    return clientId;
-  }
-
-  // 广播音量数据给所有客户端
+  // 广播音量数据给所有客户端（使用 wsClientService 转发，并触发本地事件）
   broadcastVolume(volumeData) {
-    for (const [clientId, ws] of this.clients.entries()) {
-      if (ws.readyState === ws.OPEN) {
-        ws.send(JSON.stringify({
-          type: 'volume',
-          data: volumeData
-        }));
-      }
-    }
-    // emit event for SSE or other listeners
     try {
-      this.emitter.emit('volume', volumeData);
-    } catch (e) {
-      // ignore
-    }
-  }
-
-  // SSE subscription helpers
-  onVolume(listener) {
-    this.emitter.on('volume', listener);
-  }
-
-  offVolume(listener) {
-    this.emitter.off('volume', listener);
+      wsClientService.broadcast(volumeData, 'volume');
+    } catch (e) {}
+    try {
+    } catch (e) {}
   }
 
   // 开始录音

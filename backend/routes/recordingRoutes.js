@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn, spawnSync } = require('child_process');
 const recordingService = require('../services/recordingService');
+const ffmpegQueue = require('../services/ffmpegQueueService');
 const { recordingDir } = require('../config/paths');
 
 // 确保录音文件目录存在
@@ -242,6 +243,50 @@ router.post('/recording-chunk/:filename', (req, res) => {
       message: '处理音频数据块失败',
       error: error.message,
     });
+  }
+});
+
+// 转换/转码入列接口（异步任务）
+router.post('/convert', (req, res) => {
+  try {
+    const { fileName, inputUrl, outFileName, ffmpegArgs } = req.body || {};
+
+    if (!fileName && !inputUrl && !(Array.isArray(ffmpegArgs) && ffmpegArgs.length)) {
+      return res.status(400).json({ success: false, message: '缺少 fileName/inputUrl/ffmpegArgs' });
+    }
+
+    const jobData = {};
+    if (fileName) jobData.input = path.join(recordingDir, fileName);
+    if (inputUrl) jobData.input = inputUrl;
+    if (outFileName) jobData.outFileName = outFileName;
+    if (Array.isArray(ffmpegArgs) && ffmpegArgs.length) jobData.ffmpegArgs = ffmpegArgs;
+
+    const jobId = ffmpegQueue.enqueue(jobData);
+    res.json({ success: true, jobId });
+  } catch (error) {
+    res.status(500).json({ success: false, message: '入列失败', error: error.message });
+  }
+});
+
+// 查询任务状态
+router.get('/jobs/:id', (req, res) => {
+  try {
+    const job = ffmpegQueue.getJob(req.params.id);
+    if (!job) return res.status(404).json({ success: false, message: 'job not found' });
+    res.json({ success: true, job });
+  } catch (error) {
+    res.status(500).json({ success: false, message: '查询失败', error: error.message });
+  }
+});
+
+// 取消任务
+router.post('/jobs/:id/cancel', (req, res) => {
+  try {
+    const ok = ffmpegQueue.cancelJob(req.params.id);
+    if (!ok) return res.status(400).json({ success: false, message: '无法取消或任务已结束' });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, message: '取消失败', error: error.message });
   }
 });
 
