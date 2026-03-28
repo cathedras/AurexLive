@@ -296,3 +296,36 @@ pm2 stop show-console
   - 保存演出并设为当前演出正常
   - 首页跑马灯显示当前演出与当前节目
   - PDF 导出可下载并正常打开
+
+## 本地环境文件说明（dev / prd）
+
+为便于本地开发与部署，本仓库提供简单的环境文件支持：
+
+- 根目录（后端）：
+  - `.env.dev` — 开发环境变量（默认加载）
+  - `.env.prd` — 生产环境变量（当 `NODE_ENV=production` 时默认加载）
+
+  后端在启动时会尝试载入根目录下的 `.env.dev` / `.env.prd`（也可通过 `ENV_FILE` 指定自定义文件名）。该加载使用 `dotenv`，请在需要时安装：
+
+  ```bash
+  npm install dotenv --save
+  ```
+
+- 前端（Vite）：
+  - `frontend/.env.development` — Vite 开发时使用
+  - `frontend/.env.production` — Vite 打包/预览时使用
+
+  主要变量：
+  - `VITE_API_BASE_URL` — API 基础路径（开发时示例：`http://localhost:3000/v1`）
+  - `VITE_API_PORT` — 用于前端在多个候选 ws 地址尝试时的后端端口（默认 `3000`）
+
+使用示例：
+
+```bash
+# 开发（默认会加载 .env.dev）
+npm run dev
+
+# 本地以 production 模式启动后端（会尝试加载 .env.prd）
+NODE_ENV=production ENV_FILE=.env.prd npm run server
+```
+

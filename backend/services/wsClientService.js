@@ -2,7 +2,7 @@ const WebSocket = require('ws');
 
 class WsClientService {
     constructor() {
-        // clientId -> { ws, type }
+        // clientId -> { ws, type, typeMain, typeSub }
         this.clients = new Map();
         this.nextClientId = 1;
     }
@@ -22,6 +22,14 @@ class WsClientService {
         const client = this.clients.get(clientId);
         if (!client) return false;
         client.type = type;
+        try {
+            const parts = String(type || '').split('-');
+            client.typeMain = parts[0] || type;
+            client.typeSub = parts.length > 1 ? parts.slice(1).join('-') : null;
+        } catch (e) {
+            client.typeMain = type;
+            client.typeSub = null;
+        }
         return true;
     }
 
@@ -39,7 +47,8 @@ class WsClientService {
     getClientsByType(type) {
         const out = [];
         for (const [id, client] of this.clients.entries()) {
-            if (client && client.type === type) out.push({ clientId: id, ws: client.ws });
+            if (!client) continue;
+            if (client.type === type || client.typeMain === type) out.push({ clientId: id, ws: client.ws });
         }
         return out;
     }
@@ -63,11 +72,12 @@ class WsClientService {
     // Send message to all clients of a type
     sendToType(type, message) {
         for (const [id, client] of this.clients.entries()) {
-            if (client && client.type === type) {
+            if (!client) continue;
+            if (client.type === type || client.typeMain === type) {
                 const ws = client.ws;
                 try {
                     if (ws && ws.readyState === WebSocket.OPEN) {
-                        ws.send(JSON.stringify({ type: type, data: message }));
+                        ws.send(JSON.stringify({ type: client.typeMain || type, data: message }));
                     }
                 } catch (e) {
                     // ignore

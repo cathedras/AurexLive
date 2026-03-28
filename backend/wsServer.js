@@ -1,9 +1,42 @@
 const WebSocket = require('ws');
+const os = require('os');
 const recordingService = require('./services/recordingService');
 const wsClientService = require('./services/wsClientService');
 
 module.exports = function initWebSocket(server) {
   const wss = new WebSocket.Server({ server });
+
+  // Print WebSocket endpoints once the HTTP server is listening
+  function printEndpoints() {
+    try {
+      const addr = server.address();
+      const port = addr && addr.port ? addr.port : process.env.PORT || 3000;
+      const nets = os.networkInterfaces();
+      const addrs = new Set();
+      addrs.add('localhost');
+      addrs.add('127.0.0.1');
+      Object.values(nets).forEach((ifaceArr) => {
+        ifaceArr.forEach((iface) => {
+          if (iface.family === 'IPv4' && !iface.internal) {
+            addrs.add(iface.address);
+          }
+        });
+      });
+      console.log('WebSocket endpoints:');
+      addrs.forEach((a) => {
+        console.log(`  ws://${a}:${port}`);
+      });
+      console.log('Note: if front-end is served over HTTPS use wss:// and configure TLS/proxy accordingly.');
+    } catch (e) {
+      console.log('WebSocket 地址: ws://localhost:3000');
+    }
+  }
+
+  if (server && server.listening) {
+    printEndpoints();
+  } else if (server && server.on) {
+    server.on('listening', printEndpoints);
+  }
 
   // Helper to safely send JSON over a ws connection
   function safeSend(ws, obj) {
@@ -12,26 +45,70 @@ module.exports = function initWebSocket(server) {
     } catch (e) {}
   }
 
-  wss.on('connection', (ws) => {
+  wss.on('connection', (ws, req) => {
+    // log remote address and request path for debugging
+    try {
+      const remote = req && req.socket ? req.socket.remoteAddress : 'unknown'
+      const rpath = req && req.url ? req.url : '/'
+      console.log(`[WS] new connection from ${remote} path=${rpath}`)
+    } catch (e) {}
+
     // 注册客户端并绑定消息处理（由 wsClientService 管理）
     const clientId = wsClientService.registerClient(ws);
+    // Determine client type from request path (strip leading '/') and store it
+    try {
+      const reqPath = req && req.url ? req.url : '/';
+      const clientType = String(reqPath).replace(/^\//, '') || 'default';
+      wsClientService.setClientType(clientId, clientType);
+    } catch (e) {}
     // 发送客户端ID给前端
     safeSend(ws, { type: 'clientId', data: clientId });
 
-    ws.on('message', async (message) => {
-      // 支持二进制和文本
+    // note: ws 'message' callback signature: (message, isBinary)
+    ws.on('message', async (message, isBinary) => {
+      // 支持二进制和文本 — 增加日志以便诊断客户端发送但服务端未接收的问题
+      try {
+        console.log('[WS] raw message received, isBuffer=', Buffer.isBuffer(message), 'len=', Buffer.isBuffer(message) ? message.length : (message && message.toString ? String(message).length : 'n/a'))
+      } catch (e) {}
+
       let payload = null;
-      if (Buffer.isBuffer(message)) {
+      // Only treat as binary when the isBinary flag is true. Some text frames may
+      // arrive as Buffer objects but are not binary frames per the ws flag.
+      if (isBinary) {
         // 若收到二进制，直接当作音频 chunk（二进制）需要额外约定字段，跳过自动处理
-        // 可扩展：将二进制 chunk 与元数据组合发送
+        console.log('[WS] binary frame received (isBinary=true) length=', Buffer.isBuffer(message) ? message.length : 'n/a')
         return;
       }
 
       try {
-        payload = JSON.parse(message.toString());
+        // If the frame is binary (isBinary === true) treat as binary chunk.
+        if (isBinary) {
+          // Treat binary frames as raw audio chunks: measure volume and broadcast to clients.
+          try {
+            const buf = Buffer.isBuffer(message) ? message : Buffer.from(message);
+            let volume = null;
+            try {
+              volume = recordingService.calculateVolume(buf);
+            } catch (e) {
+              // calculateVolume may fail for encoded containers; ignore and leave volume=null
+            }
+
+            const volPayload = { clientId, volume, timestamp: Date.now() };
+            // Broadcast volume to all connected clients
+            try { recordingService.broadcastVolume(volPayload); } catch (e) {}
+          } catch (e) {
+            // ignore processing errors but log
+            console.warn('[WS] failed to process binary frame', e && e.message ? e.message : e);
+          }
+          return;
+        }
+
+        const text = (typeof message === 'string') ? message : message.toString();
+        payload = JSON.parse(text);
       } catch (e) {
-        safeSend(ws, { type: 'error', data: 'invalid_json' });
-        return;
+        // If message is not JSON, treat it as raw text and handle as a demo echo
+        const text = (typeof message === 'string') ? message : (message && message.toString ? message.toString() : '');
+        payload = { type: 'raw', data: text };
       }
 
       const { type, data } = payload || {};
@@ -43,15 +120,7 @@ module.exports = function initWebSocket(server) {
           safeSend(ws, { type: 'identify-result', success: true });
           return;
         }
-        if (type === 'start-backend') {
-          const { device, outFileName, ffmpegArgs } = data || {};
-          const info = recordingService.startRecordingWithFfmpeg(clientId, ffmpegArgs, outFileName || null);
-          safeSend(ws, { type: 'start-backend-result', success: true, data: info });
-        } else if (type === 'stop-recording') {
-          const { fileName } = data || {};
-          const info = recordingService.stopRecording(fileName);
-          safeSend(ws, { type: 'stop-recording-result', success: true, data: info });
-        } else if (type === 'start-recording') {
+        if (type === 'start-recording') {
           const info = recordingService.startRecording(clientId);
           safeSend(ws, { type: 'start-recording-result', success: true, data: info });
         } else if (type === 'add-chunk') {
@@ -68,10 +137,23 @@ module.exports = function initWebSocket(server) {
           const { fileName } = data || {};
           const status = recordingService.getStatus(fileName);
           safeSend(ws, { type: 'get-status-result', success: true, data: status });
+        } else if (type === 'echo' || type === 'raw') {
+          // Demo: echo back the received data to the client
+          safeSend(ws, { type: 'echo', success: true, data });
         }
       } catch (err) {
         safeSend(ws, { type: `${type}-result`, success: false, error: err.message });
       }
     });
+    ws.on('close', (code, reason) => {
+      console.log(`[WS] client ${clientId} disconnected code=${code} reason=${reason && reason.toString ? reason.toString() : reason}`)
+    })
+    ws.on('error', (err) => {
+      console.warn(`[WS] client ${clientId} error:`, err && err.message ? err.message : err)
+    })
   });
+
+  wss.on('error', (err) => {
+    console.error('[WS] server error', err)
+  })
 };

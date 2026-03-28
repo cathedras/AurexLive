@@ -2,7 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useFloatingAudioPlayer } from '../component/FloatingAudioPlayer'
 import Modal from '../component/Modal'
-import { getRecordingList, deleteRecording, startRecording, sendRecordingChunk, startRecordingBackend, stopRecordingBackend, subscribeRecordingSSE, connectRecordingSocket, wsStartRecordingBackend, wsStopRecording, wsAddChunk } from '../services/musicPlay';
+import { getRecordingList, deleteRecording, startRecording, sendRecordingChunk, startRecordingBackend, stopRecordingBackend, subscribeRecordingSSE } from '../services/musicPlay';
+import wsClientService from '../services/wsClientService';
 import { Download, Headphones, Trash2, Play, Pause } from 'lucide-react'
 
 const RecordingPage = () => {
@@ -170,19 +171,9 @@ const RecordingPage = () => {
       // clear any previous errors when user retries
       setError('');
     try {
-      // Connect WebSocket now that recording is requested
-      const socket = await connectRecordingSocket(
-        (data) => { if (data && data.volume !== undefined) setVolume(data.volume || 0); },
-        () => setWsConnected(true),
-        () => setWsConnected(false),
-        (msg) => { if (msg?.type === 'clientId' && msg.data) setClientId(msg.data); }
-      );
-      setWs(socket);
-      setWsConnected(true);
-
-      // Tell backend to start recording (server-side capture) via WebSocket
+      // Tell backend to start recording (server-side capture) via HTTP
       const deviceArg = selectedDevice || null;
-      const res = await wsStartRecordingBackend({ device: deviceArg, outFileName: null, ffmpegArgs: null });
+      const res = await startRecordingBackend({ clientId: null, device: deviceArg, outFileName: null, ffmpegArgs: null });
       if (!res || !res.success) throw new Error((res && res.error) || 'start backend failed');
 
       // set fileName and recording state from response
@@ -197,6 +188,21 @@ const RecordingPage = () => {
       timerRef.current = setInterval(() => {
         setRecordingTime(prev => prev + 1);
       }, 1000);
+
+      // Asynchronously connect WebSocket to receive live volume updates using client service
+      (async () => {
+        try {
+          const socket = await wsClientService.connect('volume-binary',
+            (data) => { if (data && data.volume !== undefined) setVolume(data.volume || 0); },
+            () => setWsConnected(true),
+            () => setWsConnected(false),
+            (msg) => { if (msg?.type === 'clientId' && msg.data) setClientId(msg.data); }
+          );
+          setWs(socket);
+        } catch (e) {
+          console.warn('WebSocket connect failed (async):', e && e.message ? e.message : e);
+        }
+      })();
     } catch (err) {
       setError(`录音失败: ${err.message}`);
       console.error('录音错误:', err);
@@ -213,17 +219,8 @@ const RecordingPage = () => {
   const stopRecordingHandler = async () => {
     if (isRecording && currentRecordingFileName) {
       try {
-        // ask backend to stop via WebSocket if available
-        if (ws && ws.send) {
-          try {
-            await wsStopRecording(currentRecordingFileName);
-          } catch (e) {
-            console.warn('ws stop failed, fallback to HTTP', e);
-            await stopRecordingBackend(currentRecordingFileName);
-          }
-        } else {
-          await stopRecordingBackend(currentRecordingFileName);
-        }
+        // stop backend recording via HTTP
+        await stopRecordingBackend(currentRecordingFileName);
       } catch (e) {
         console.error('stop backend failed', e);
       }

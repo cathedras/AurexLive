@@ -1,9 +1,18 @@
+// Load environment variables early
+try {
+  const envPath = process.env.ENV_FILE || (process.env.NODE_ENV === 'production' ? '.env.prd' : '.env.dev');
+  require('dotenv').config({ path: require('path').join(__dirname, '..', envPath) });
+} catch (e) {
+  // ignore if dotenv not installed or file missing
+}
+
 const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const swaggerUi = require('swagger-ui-express');
 const http = require('http');
+const os = require('os');
 
 const {
   uploadDir,
@@ -97,14 +106,14 @@ app.use(errorHandler);
 // 启动服务器
 server.listen(port, () => {
   console.log(`============================================`);
-  console.log(`文件传输服务已启动 ✅`);
-  console.log(`访问地址：http://localhost:${port}`);
-  console.log(`接口文档：http://localhost:${port}/docs`);
-  console.log(`原始接口文档：http://localhost:${port}/docs/openapi.json`);
-  console.log(`上传文件保存路径：${uploadDir}`);
-  console.log(`演出记录保存路径：${showRecordDir}`);
-  console.log(`录音文件保存路径：${recordingDir}`);
-  console.log(`运行时配置路径：${runtimeConfigDir}`);
+  console.log(`演出服务启动成功 🚀 ✅`);
+  console.log(`访问地址: http://localhost:${port}`);
+  console.log(`接口文档: http://localhost:${port}/docs`);
+  console.log(`原始接口文档: http://localhost:${port}/docs/openapi.json`);
+  console.log(`上传文件保存路径: ${uploadDir}`);
+  console.log(`演出记录保存路径: ${showRecordDir}`);
+  console.log(`录音文件保存路径: ${recordingDir}`);
+  console.log(`运行时配置路径: ${runtimeConfigDir}`);
   console.log(`============================================`);
 
   musicPlaybackService.restoreFromRuntimeState()

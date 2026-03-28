@@ -62,16 +62,17 @@ router.post('/start-recording-backend', (req, res) => {
   try {
     const { clientId, device, outFileName, ffmpegArgs } = req.body || {};
 
-    // Build ffmpegArgs if provided as array in body, otherwise allow default inside service
+    // Build ffmpegArgs if provided as array in body, otherwise require device
     let args = undefined;
-    if (Array.isArray(ffmpegArgs) && ffmpegArgs.length) args = ffmpegArgs;
-    else if (device) {
+    if (Array.isArray(ffmpegArgs) && ffmpegArgs.length) {
+      args = ffmpegArgs;
+    } else if (device) {
       // simple platform-aware convenience: if device provided, use avfoundation on mac or dshow on windows
       // caller may provide full ffmpegArgs for precise control
       args = ['-f', 'avfoundation', '-i', device, '-vn', '-c:a', 'aac', '-b:a', '128k', '-y'];
       if (outFileName) args.push(path.join(recordingDir, outFileName));
     }
-
+    // let the recording service decide default device/args when args is undefined
     const info = recordingService.startRecordingWithFfmpeg(clientId || null, args, outFileName);
     res.json({ success: true, data: info });
   } catch (error) {

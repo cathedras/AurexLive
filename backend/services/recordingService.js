@@ -131,10 +131,31 @@ class RecordingService {
       throw new Error(`ffmpeg not available: ${err.message}`);
     }
 
-    // Prepare final spawn arguments; optionally append astats null-output for monitoring
-    let spawnArgs = args.slice();
-    if (addAstats) {
-      spawnArgs = spawnArgs.concat(ASTATS_MONITOR_ARGS);
+    // Prepare final spawn arguments.
+    // If caller did not provide ffmpegArgs, build platform-aware defaults (input device + sensible encoding).
+    let spawnArgs;
+    if (!Array.isArray(ffmpegArgs) || ffmpegArgs.length === 0) {
+      const platform = process.platform;
+      let defaultInputArgs = [];
+      if (platform === 'darwin') {
+        // avfoundation default audio device
+        defaultInputArgs = ['-f', 'avfoundation', '-i', 'default', '-vn', '-c:a', 'aac', '-b:a', '128k'];
+      } else if (platform === 'win32') {
+        // use dshow; allow override via env WIN_FFMPEG_DEVICE (e.g. "audio=virtual-audio-capturer")
+        const winDev = process.env.WIN_FFMPEG_DEVICE || 'audio=default';
+        defaultInputArgs = ['-f', 'dshow', '-i', winDev, '-vn', '-c:a', 'aac', '-b:a', '128k'];
+      } else {
+        // assume Linux/ALSA by default; allow override via LINUX_FFMPEG_DEVICE
+        const linuxDev = process.env.LINUX_FFMPEG_DEVICE || 'default';
+        defaultInputArgs = ['-f', 'alsa', '-i', linuxDev, '-vn', '-c:a', 'aac', '-b:a', '128k'];
+      }
+
+      const hasOutputInDefault = defaultInputArgs.some(a => typeof a === 'string' && (a.indexOf(path.sep) !== -1 || /\.(mp4|m4a|aac|wav|webm|flac|mp3)$/i.test(a)));
+      const baseArgs = hasOutputInDefault ? defaultInputArgs.slice() : defaultInputArgs.concat([filePath]);
+      spawnArgs = baseArgs.concat(ASTATS_MONITOR_ARGS);
+    } else {
+      spawnArgs = args.slice();
+      if (addAstats) spawnArgs = spawnArgs.concat(ASTATS_MONITOR_ARGS);
     }
 
     let ff;
