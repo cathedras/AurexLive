@@ -5,6 +5,9 @@ const EventEmitter = require('events');
 const { recordingDir } = require('../config/paths');
 const wsClientService = require('./wsClientService');
 
+// Enable detailed ffmpeg I/O logging when env var set: FFMPEG_DEBUG=1 or RECORDING_DEBUG=1
+const FFMPEG_DEBUG = !!(process.env.FFMPEG_DEBUG === '1' || process.env.RECORDING_DEBUG === '1');
+
 // ffmpeg args for a null-output astats/ametadata monitor (used to extract RMS levels)
 const ASTATS_MONITOR_ARGS = ['-map', '0:a', '-af', 'astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level:file=-', '-f', 'null', '-'];
 
@@ -13,12 +16,12 @@ function resolveFfmpegPath() {
   try {
     const rel = require('../../release');
     if (rel && rel.ffmpegPath) return rel.ffmpegPath;
-  } catch (e) {}
+  } catch (e) { }
 
   try {
     const pkg = require('ffmpeg-min-local');
     if (pkg && pkg.ffmpegPath) return pkg.ffmpegPath;
-  } catch (e) {}
+  } catch (e) { }
 
   return 'ffmpeg';
 }
@@ -31,10 +34,8 @@ class RecordingService {
   // 广播音量数据给所有客户端（使用 wsClientService 转发，并触发本地事件）
   broadcastVolume(volumeData) {
     try {
-      wsClientService.broadcast(volumeData, 'volume');
-    } catch (e) {}
-    try {
-    } catch (e) {}
+      wsClientService.broadcastVolume(volumeData);
+    } catch (e) { }
   }
 
   // 开始录音
@@ -71,10 +72,10 @@ class RecordingService {
   // params:
   // - clientId: associated client
   // - ffmpegArgs: array of args to pass to ffmpeg (if omitted a sensible default will be used)
-  // - outFileName: optional filename (defaults to recording-<timestamp>.mp4)
-  startRecordingWithFfmpeg(clientId, ffmpegArgs, outFileName) {
+  // - outFileName: optional filename (defaults to recording-<timestamp>.webm)
+  startRecordingWithFfmpeg(clientId, device) {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const fileName = outFileName || `recording-${timestamp}.mp4`;
+    const fileName = `recording-${timestamp}.mp4`;
     const filePath = path.join(recordingDir, fileName);
 
     if (!fs.existsSync(recordingDir)) {
@@ -91,25 +92,6 @@ class RecordingService {
       volumeData: [],
       ffmpegProc: null,
     };
-
-    // Build and normalize ffmpeg args
-    const defaultArgs = [
-      // empty by default — caller or route should pass device/input specifics
-    ];
-
-    const initialArgs = Array.isArray(ffmpegArgs) && ffmpegArgs.length ? ffmpegArgs.slice() : defaultArgs.slice();
-
-    // ensure there is an output target in args; if not, append generated filePath
-    const hasOutput = initialArgs.some(a => {
-      if (!a || typeof a !== 'string') return false;
-      if (a.indexOf(path.sep) !== -1) return true; // looks like a path
-      if (/\.(mp4|m4a|aac|wav|webm|flac|mp3)$/i.test(a)) return true;
-      return false;
-    });
-    const args = hasOutput ? initialArgs : initialArgs.concat([filePath]);
-
-    // decide whether we should add astats monitoring (when user didn't provide custom args)
-    const addAstats = !(Array.isArray(ffmpegArgs) && ffmpegArgs.length);
 
     // resolve ffmpeg executable and verify availability
     let ffmpegPath = resolveFfmpegPath();
@@ -134,28 +116,50 @@ class RecordingService {
     // Prepare final spawn arguments.
     // If caller did not provide ffmpegArgs, build platform-aware defaults (input device + sensible encoding).
     let spawnArgs;
-    if (!Array.isArray(ffmpegArgs) || ffmpegArgs.length === 0) {
-      const platform = process.platform;
-      let defaultInputArgs = [];
-      if (platform === 'darwin') {
-        // avfoundation default audio device
-        defaultInputArgs = ['-f', 'avfoundation', '-i', 'default', '-vn', '-c:a', 'aac', '-b:a', '128k'];
-      } else if (platform === 'win32') {
-        // use dshow; allow override via env WIN_FFMPEG_DEVICE (e.g. "audio=virtual-audio-capturer")
-        const winDev = process.env.WIN_FFMPEG_DEVICE || 'audio=default';
-        defaultInputArgs = ['-f', 'dshow', '-i', winDev, '-vn', '-c:a', 'aac', '-b:a', '128k'];
-      } else {
-        // assume Linux/ALSA by default; allow override via LINUX_FFMPEG_DEVICE
-        const linuxDev = process.env.LINUX_FFMPEG_DEVICE || 'default';
-        defaultInputArgs = ['-f', 'alsa', '-i', linuxDev, '-vn', '-c:a', 'aac', '-b:a', '128k'];
-      }
-
-      const hasOutputInDefault = defaultInputArgs.some(a => typeof a === 'string' && (a.indexOf(path.sep) !== -1 || /\.(mp4|m4a|aac|wav|webm|flac|mp3)$/i.test(a)));
-      const baseArgs = hasOutputInDefault ? defaultInputArgs.slice() : defaultInputArgs.concat([filePath]);
-      spawnArgs = baseArgs.concat(ASTATS_MONITOR_ARGS);
+    const platform = process.platform;
+    console.log(`No ffmpeg args provided, using platform-aware defaults for ${platform}`);
+    if (platform === 'darwin') {
+      // For macOS (avfoundation) use an asplit + astats filter_complex so we can
+      // both encode to a file and monitor RMS levels in stderr simultaneously.
+      // This produces lines like lavfi.astats.Overall.RMS_level which we parse.
+      // input device defaults to 'default' but callers may pass a device string like ':2'
+      const macDevice = device || 'default';
+      // Build filter_complex: split audio into two streams, one for output and one for monitoring
+      const filter = '\'[0:a]asplit=2[aout][amon];[amon]astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level:file=-\' \\';
+      // spawnArgs order: input spec, filter_complex, map output stream, codec settings, output file
+      spawnArgs = [
+        '-f', 'avfoundation', '-i', macDevice,
+        '-vn','\\',
+        '-filter_complex', filter,
+        '-map', '\'[aout]\'',
+        '-c:a', 'aac', '-b:a', '128k',
+        '-y', filePath
+      ];
+    } else if (platform === 'win32') {
+      // use dshow; allow override via env WIN_FFMPEG_DEVICE (e.g. "audio=virtual-audio-capturer")
+      const winDev = device || 'audio=default';
+      const filter = '\'[0:a]asplit=2[aout][amon];[amon]astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level:file=-\' \\';
+      spawnArgs = [
+        '-f', 'dshow', '-i', winDev,
+        '-vn','\\',
+        '-filter_complex', filter,
+        '-map', '\'[aout]\'',
+        '-c:a', 'aac', '-b:a', '128k',
+        '-y', filePath
+      ];    
     } else {
-      spawnArgs = args.slice();
-      if (addAstats) spawnArgs = spawnArgs.concat(ASTATS_MONITOR_ARGS);
+      // assume Linux/ALSA by default; allow override via LINUX_FFMPEG_DEVICE
+      const linuxDev = device || 'default';
+      const filter = '\'[0:a]asplit=2[aout][amon];[amon]astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level:file=-\' \\';
+
+      spawnArgs = [
+        '-f', 'alsa', '-i', linuxDev,
+        '-vn','\\',
+        '-filter_complex', filter,
+        '-map', '\'[aout]\'',
+        '-c:a', 'aac', '-b:a', '128k',
+        '-y', filePath
+      ];  
     }
 
     let ff;
@@ -168,11 +172,20 @@ class RecordingService {
       recordingInfo.ffmpegProc = null;
       throw spawnErr;
     }
-
+    console.log(`ffmpeg started with PID ${ff.Errorno ? ff.Errorno : ff.pid}`);
     // Parse stderr for astats/ametadata output to extract RMS level (dB) and broadcast volume
     ff.stderr.on('data', (chunk) => {
       try {
         const text = chunk.toString();
+        // optional debug: output a trimmed stderr snippet for remote troubleshooting
+        if (FFMPEG_DEBUG) {
+          try {
+            const dbg = text.replace(/\s+/g, ' ').trim().slice(0, 1000);
+            console.log(`[RecordingService][ffmpeg-stderr][${fileName}] ${dbg}`);
+          } catch (e) {
+            // ignore debug logging errors
+          }
+        }
         const m1 = text.match(/lavfi\.astats\.Overall\.RMS_level\s*=?\s*([-\d.]+)\b/);
         let dbValue = null;
         if (m1) dbValue = parseFloat(m1[1]);
@@ -184,6 +197,7 @@ class RecordingService {
           const clamped = Math.max(-60, Math.min(0, dbValue));
           const normalized = Math.round((1 - (clamped / -60)) * 100);
           recordingInfo.volumeData.push({ timestamp: Date.now(), volume: normalized });
+          console.log(`[RecordingService] volume update for ${fileName}: ${normalized} (raw dB: ${dbValue})`);
           this.broadcastVolume({ fileName, volume: normalized, timestamp: Date.now() });
         }
       } catch (e) {
@@ -194,6 +208,12 @@ class RecordingService {
     // Also support parsing raw PCM from stdout (if ffmpeg was configured to pipe PCM)
     ff.stdout.on('data', (chunk) => {
       try {
+        if (FFMPEG_DEBUG) {
+          try {
+            const txt = Buffer.isBuffer(chunk) ? chunk.toString('hex').slice(0, 200) : String(chunk).slice(0, 200);
+            console.log(`[RecordingService][ffmpeg-stdout][${fileName}] ${txt}`);
+          } catch (e) { }
+        }
         const volume = this.calculateVolume(Buffer.from(chunk));
         recordingInfo.volumeData.push({ timestamp: Date.now(), volume });
         this.broadcastVolume({ fileName, volume, timestamp: Date.now() });
@@ -229,13 +249,13 @@ class RecordingService {
 
     // 将Buffer转换为音频数据并计算音量
     const volume = this.calculateVolume(chunk);
-    
+
     // 记录音量数据
     recordingInfo.volumeData.push({
       timestamp: Date.now(),
       volume: volume
     });
-    
+
     // 广播音量数据
     this.broadcastVolume({
       fileName,
@@ -251,16 +271,16 @@ class RecordingService {
   calculateVolume(buffer) {
     // 将buffer转换为Float32Array进行处理
     const float32Array = new Float32Array(buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength));
-    
+
     let sum = 0;
     for (let i = 0; i < float32Array.length; i++) {
       sum += float32Array[i] * float32Array[i];
     }
-    
+
     const rms = Math.sqrt(sum / float32Array.length);
     // 将RMS值映射到0-100的范围内
     const normalizedVolume = Math.min(100, Math.max(0, Math.round(rms * 1000)));
-    
+
     return normalizedVolume;
   }
 
@@ -278,12 +298,12 @@ class RecordingService {
         if (recordingInfo.ffmpegProc.stdin && !recordingInfo.ffmpegProc.stdin.destroyed) {
           recordingInfo.ffmpegProc.stdin.write('q');
         }
-      } catch (e) {}
+      } catch (e) { }
 
       // wait briefly for exit then force kill
       const proc = recordingInfo.ffmpegProc;
       const timeout = setTimeout(() => {
-        try { proc.kill('SIGKILL'); } catch (e) {}
+        try { proc.kill('SIGKILL'); } catch (e) { }
       }, 3000);
 
       // When process exits, we will finalize below
@@ -342,7 +362,7 @@ class RecordingService {
         volume: info.volumeData.length > 0 ? info.volumeData[info.volumeData.length - 1].volume : 0
       });
     }
-    
+
     return {
       activeRecordings: activeStatuses,
       totalActive: activeStatuses.length,
@@ -353,14 +373,14 @@ class RecordingService {
   getList() {
     try {
       // include common audio/video container formats produced by ffmpeg
-      const files = fs.readdirSync(recordingDir).filter(file => 
+      const files = fs.readdirSync(recordingDir).filter(file =>
         /\.(mp3|wav|webm|ogg|mp4|m4a|aac|flac)$/i.test(file)
       );
-      
+
       const recordings = files.map(file => {
         const filePath = path.join(recordingDir, file);
         const stats = fs.statSync(filePath);
-        
+
         return {
           filename: file,
           size: stats.size,
@@ -368,7 +388,7 @@ class RecordingService {
           url: `/v1/recordings/${encodeURIComponent(file)}`,
         };
       }).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)); // 按时间倒序排列
-      
+
       return recordings;
     } catch (error) {
       throw error;
@@ -378,21 +398,21 @@ class RecordingService {
   // 删除录音文件
   deleteRecording(fileName) {
     const filePath = path.join(recordingDir, fileName);
-    
+
     // 验证文件名安全性
     if (path.resolve(filePath).indexOf(recordingDir) !== 0) {
       throw new Error('无效的文件路径');
     }
-    
+
     if (!fs.existsSync(filePath)) {
       throw new Error('文件不存在');
     }
-    
+
     // 如果正在录音，则先停止
     if (this.activeRecordings.has(fileName)) {
       this.stopRecording(fileName);
     }
-    
+
     fs.unlinkSync(filePath);
     return true;
   }

@@ -99,6 +99,31 @@ class WsClientService {
             }
         }
     }
+
+    // 广播音量数据给订阅了特定录音文件的客户端
+    broadcastVolume(volumeData) {
+        const { fileName } = volumeData || {};
+        if (!fileName) {
+            // 如果没有指定文件名，广播给所有客户端
+            this.broadcast(volumeData, 'volume');
+            return;
+        }
+
+        for (const [id, client] of this.clients.entries()) {
+            const ws = client && client.ws;
+            try {
+                // 只发送给订阅了该录音文件的客户端，或者没有特定订阅的客户端
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    const subscribedFile = client.subscribedFile;
+                    if (!subscribedFile || subscribedFile === fileName) {
+                        ws.send(JSON.stringify({ type: 'volume', data: volumeData }));
+                    }
+                }
+            } catch (e) {
+                // ignore
+            }
+        }
+    }
 }
 
 module.exports = new WsClientService();

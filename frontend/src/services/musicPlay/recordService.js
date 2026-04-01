@@ -16,20 +16,6 @@ export const getRecordingStatus = async (fileName) => {
   }
 };
 
-export const startRecording = async (clientId) => {
-  try {
-    const response = await fetch(`${BASE_URL}/start-recording`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clientId }),
-    });
-    return await response.json();
-  } catch (error) {
-    console.error('开始录音失败:', error);
-    throw error;
-  }
-};
-
 export const sendRecordingChunk = async (chunk, filename) => {
   try {
     const arrayBuffer = await chunk.arrayBuffer();
@@ -85,9 +71,9 @@ export const deleteRecording = async (filename) => {
   }
 };
 
-export const startRecordingBackend = async ({ clientId, device, outFileName, ffmpegArgs } = {}) => {
+export const startRecordingBackend = async ({ clientId, device } = {}) => {
   try {
-    const body = { clientId, device, outFileName, ffmpegArgs };
+    const body = { clientId, device };
     const response = await fetch(`${BASE_URL}/start-recording-backend`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

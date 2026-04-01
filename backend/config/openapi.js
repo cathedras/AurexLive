@@ -182,6 +182,22 @@ const openApiSpec = {
           updatedAt: { type: 'string', format: 'date-time', nullable: true }
         }
       }
+      ,
+        RecordingInfo: {
+          type: 'object',
+          properties: {
+            fileName: { type: 'string', example: 'recording-2026-03-28T11-00-00-000Z.flac' },
+            startTime: { type: 'string', format: 'date-time' }
+          }
+        },
+        VolumeEvent: {
+          type: 'object',
+          properties: {
+            fileName: { type: 'string', example: 'recording-2026-03-28T11-00-00-000Z.flac' },
+            volume: { type: 'integer', example: 42 },
+            timestamp: { type: 'integer', example: 1679999940000 }
+          }
+        }
     }
   },
   paths: {
@@ -430,6 +446,119 @@ const openApiSpec = {
               }
             }
           }
+        }
+      }
+    },
+    '/v1/start-recording': {
+      post: {
+        tags: ['Live'],
+        summary: '开始本地内存记录（关联 clientId）',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['clientId'],
+                properties: {
+                  clientId: { type: 'string', example: '1' }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          200: {
+            description: '录音已开始（内存/分块模式）',
+            content: {
+              'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, data: { $ref: '#/components/schemas/RecordingInfo' } } } }
+            }
+          }
+        }
+      }
+    },
+    '/v1/start-recording-backend': {
+      post: {
+        tags: ['Live'],
+        summary: '后端启动 ffmpeg 录音（可传 device 或 自定义 ffmpegArgs）',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  clientId: { type: 'string', example: '1' },
+                  device: { type: 'string', example: ':2', description: '平台依赖的设备标识，macOS avfoundation 使用 :<index>' },
+                  outFileName: { type: 'string', example: 'myrecord.flac' },
+                  ffmpegArgs: { type: 'array', items: { type: 'string' }, description: '如需自定义完整 ffmpeg 参数，可传数组' }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          200: {
+            description: '后端 ffmpeg 已启动，返回文件名',
+            content: {
+              'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, data: { $ref: '#/components/schemas/RecordingInfo' } } } }
+            }
+          },
+          400: { description: '请求参数错误', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
+          500: { description: '启动失败', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        }
+      }
+    },
+    '/v1/stop-recording-backend': {
+      post: {
+        tags: ['Live'],
+        summary: '停止后端录音（停止 ffmpeg 或 将内存 chunk 写盘）',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': { schema: { type: 'object', required: ['fileName'], properties: { fileName: { type: 'string' } } } }
+          }
+        },
+        responses: {
+          200: { description: '停止成功', content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessFlag' } } } },
+          400: { description: '参数缺失', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
+          500: { description: '停止失败', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        }
+      }
+    },
+    '/v1/recording-status': {
+      get: {
+        tags: ['Live'],
+        summary: '查询录音状态（含最新音量）',
+        parameters: [
+          { name: 'fileName', in: 'query', required: false, schema: { type: 'string' }, description: '不传返回所有活动录音' }
+        ],
+        responses: {
+          200: { description: '状态信息', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, data: { type: 'object' } } } } } }
+        }
+      }
+    },
+    '/v1/recording-sse/{filename}': {
+      get: {
+        tags: ['Live'],
+        summary: '通过 SSE 订阅指定录音的音量事件',
+        parameters: [ { name: 'filename', in: 'path', required: true, schema: { type: 'string' } } ],
+        responses: {
+          200: { description: 'SSE 流（event: volume）', content: { 'text/event-stream': { schema: { type: 'string' } } } }
+        }
+      }
+    },
+    '/v1/ffmpeg-volume-sse': {
+      get: {
+        tags: ['Diagnostics'],
+        summary: '基于 ffmpeg astats 实时输出音量（SSE）——用于调试或外部监控',
+        parameters: [
+          { name: 'fileName', in: 'query', required: false, schema: { type: 'string' }, description: '对已存在音频文件进行监控' },
+          { name: 'device', in: 'query', required: false, schema: { type: 'string' }, description: '或传入设备标识以直接采集设备音频（平台依赖）' }
+        ],
+        responses: {
+          200: { description: 'SSE 流（event: volume）', content: { 'text/event-stream': { schema: { type: 'string' } } } },
+          400: { description: '缺少 fileName 或 device', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
         }
       }
     },

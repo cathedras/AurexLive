@@ -120,10 +120,22 @@ module.exports = function initWebSocket(server) {
           safeSend(ws, { type: 'identify-result', success: true });
           return;
         }
-        if (type === 'start-recording') {
-          const info = recordingService.startRecording(clientId);
-          safeSend(ws, { type: 'start-recording-result', success: true, data: info });
-        } else if (type === 'add-chunk') {
+        if (type === 'subscribe-volume') {
+          const { fileName } = data || {};
+          if (fileName) {
+            // 存储客户端订阅的录音文件
+            const client = wsClientService.clients.get(clientId);
+            if (client) {
+              client.subscribedFile = fileName;
+            }
+            safeSend(ws, { type: 'subscribe-volume-result', success: true, fileName });
+            console.log(`[WS] client ${clientId} subscribed to volume for ${fileName}`);
+          } else {
+            safeSend(ws, { type: 'subscribe-volume-result', success: false, error: 'missing_fileName' });
+          }
+          return;
+        }
+        if (type === 'add-chunk') {
           // data: { fileName, chunkBase64 }
           const { fileName, chunkBase64 } = data || {};
           if (fileName && chunkBase64) {

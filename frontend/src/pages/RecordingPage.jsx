@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useFloatingAudioPlayer } from '../component/FloatingAudioPlayer'
 import Modal from '../component/Modal'
-import { getRecordingList, deleteRecording, startRecording, sendRecordingChunk, startRecordingBackend, stopRecordingBackend, subscribeRecordingSSE } from '../services/musicPlay';
+import { getRecordingList, deleteRecording, sendRecordingChunk, startRecordingBackend, stopRecordingBackend, subscribeRecordingSSE } from '../services/musicPlay';
 import wsClientService from '../services/wsClientService';
 import { Download, Headphones, Trash2, Play, Pause } from 'lucide-react'
 
@@ -168,46 +168,72 @@ const RecordingPage = () => {
     }
 
     setLoading(true);
-      // clear any previous errors when user retries
-      setError('');
-    try {
-      // Tell backend to start recording (server-side capture) via HTTP
-      const deviceArg = selectedDevice || null;
-      const res = await startRecordingBackend({ clientId: null, device: deviceArg, outFileName: null, ffmpegArgs: null });
-      if (!res || !res.success) throw new Error((res && res.error) || 'start backend failed');
+    // clear any previous errors when user retries
+    setError('');
+    let socket = null;
 
-      // set fileName and recording state from response
-      const { fileName } = (res && res.data) ? res.data : {};
-      if (fileName) {
-        setCurrentRecordingFileName(fileName);
-        setIsRecording(true);
-        setRecordingTime(0);
+    try {
+      // 第1步：先连接 WebSocket（确保能收到音量数据）
+      socket = await wsClientService.connect('volume-binary',
+        (data) => {
+          // 处理音量数据
+          if (data && data.volume !== undefined) {
+            setVolume(data.volume || 0);
+          }
+        },
+        () => {
+          setWsConnected(true);
+          console.log('[WS] connected');
+        },
+        () => {
+          setWsConnected(false);
+          console.log('[WS] disconnected');
+        },
+        (msg) => {
+          // 处理通用消息，如 clientId
+          if (msg?.type === 'clientId' && msg.data) {
+            setClientId(msg.data);
+          }
+          console.log('[WS] message:', msg);
+        }
+      );
+      setWs(socket);
+
+      // 第2步：启动后端录音（通过 HTTP）
+      const deviceArg = selectedDevice || null;
+      const res = await startRecordingBackend({ clientId: null, device: deviceArg });
+      if (!res || !res.success) {
+        throw new Error((res && res.error) || 'start backend failed');
       }
 
-      // start timer
+      // 第3步：从响应获取文件名并设置状态
+      const { fileName } = (res && res.data) ? res.data : {};
+      if (!fileName) {
+        throw new Error('no fileName returned');
+      }
+
+      setCurrentRecordingFileName(fileName);
+      setIsRecording(true);
+      setRecordingTime(0);
+
+      // 第4步：发送订阅命令，让服务端知道这个客户端要接收该录音的音量
+      wsClientService.sendJsonAsText(socket, {
+        type: 'subscribe-volume',
+        data: { fileName }
+      });
+
+      // 第5步：启动计时器
       timerRef.current = setInterval(() => {
         setRecordingTime(prev => prev + 1);
       }, 1000);
 
-      // Asynchronously connect WebSocket to receive live volume updates using client service
-      (async () => {
-        try {
-          const socket = await wsClientService.connect('volume-binary',
-            (data) => { if (data && data.volume !== undefined) setVolume(data.volume || 0); },
-            () => setWsConnected(true),
-            () => setWsConnected(false),
-            (msg) => { if (msg?.type === 'clientId' && msg.data) setClientId(msg.data); }
-          );
-          setWs(socket);
-        } catch (e) {
-          console.warn('WebSocket connect failed (async):', e && e.message ? e.message : e);
-        }
-      })();
     } catch (err) {
       setError(`录音失败: ${err.message}`);
       console.error('录音错误:', err);
-      // cleanup ws
-      try { if (ws && ws.close) ws.close(); } catch (e) {}
+      // 出错时清理 WebSocket
+      if (socket && socket.close) {
+        try { socket.close(); } catch (e) {}
+      }
       setWs(null);
       setWsConnected(false);
     } finally {
