@@ -1,6 +1,13 @@
 const fs = require('fs');
 const path = require('path');
+const { installGlobalLogger } = require('./middleware/logger');
+
+installGlobalLogger();
+
 const recordingService = require('./services/recordingService');
+const { createLogger } = require('./middleware/logger');
+
+const logger = createLogger({ source: 'monitorWorker' });
 
 const monitorsPath = path.resolve(__dirname, '..', 'runtime', 'monitors.json');
 
@@ -17,7 +24,7 @@ function readMonitorsFile() {
     const raw = fs.readFileSync(monitorsPath, 'utf8');
     return JSON.parse(raw || '[]');
   } catch (e) {
-    console.error('monitorWorker: failed to read monitors file', e && e.message);
+    logger.error(`monitorWorker: failed to read monitors file ${e && e.message ? e.message : e}`, 'readMonitorsFile');
     return [];
   }
 }
@@ -30,11 +37,11 @@ function syncMonitors() {
   for (const [clientId, item] of wanted) {
     if (!active.has(clientId)) {
       try {
-        console.log('monitorWorker: starting monitor for', clientId, item.device || 'default');
+        logger.info(`monitorWorker: starting monitor for ${clientId} ${item.device || 'default'}`, 'syncMonitors');
         recordingService.startVolumeMonitor(clientId, item.device);
         active.set(clientId, item);
       } catch (e) {
-        console.error('monitorWorker: failed to start monitor for', clientId, e && e.message);
+        logger.error(`monitorWorker: failed to start monitor for ${clientId} ${e && e.message ? e.message : e}`, 'syncMonitors');
       }
     }
   }
@@ -43,10 +50,10 @@ function syncMonitors() {
   for (const [clientId] of active) {
     if (!wanted.has(clientId)) {
       try {
-        console.log('monitorWorker: stopping monitor for', clientId);
+        logger.info(`monitorWorker: stopping monitor for ${clientId}`, 'syncMonitors');
         recordingService.stopVolumeMonitor(clientId);
       } catch (e) {
-        console.error('monitorWorker: failed to stop monitor for', clientId, e && e.message);
+        logger.error(`monitorWorker: failed to stop monitor for ${clientId} ${e && e.message ? e.message : e}`, 'syncMonitors');
       }
       active.delete(clientId);
     }
@@ -57,19 +64,19 @@ function watchFile() {
   try {
     fs.watchFile(monitorsPath, { interval: 1000 }, (curr, prev) => {
       if (curr.mtimeMs !== prev.mtimeMs) {
-        try { syncMonitors(); } catch (e) { console.error('monitorWorker: sync error', e && e.message); }
+        try { syncMonitors(); } catch (e) { logger.error(`monitorWorker: sync error ${e && e.message ? e.message : e}`, 'watchFile'); }
       }
     });
   } catch (e) {
     // fallback to polling
     setInterval(() => {
-      try { syncMonitors(); } catch (err) { console.error('monitorWorker: sync error', err && err.message); }
+      try { syncMonitors(); } catch (err) { logger.error(`monitorWorker: sync error ${err && err.message ? err.message : err}`, 'watchFile'); }
     }, 2000);
   }
 }
 
 function shutdown() {
-  console.log('monitorWorker: shutting down, stopping monitors...');
+  logger.info('monitorWorker: shutting down, stopping monitors...', 'shutdown');
   for (const [clientId] of active) {
     try { recordingService.stopVolumeMonitor(clientId); } catch (e) {}
   }
@@ -85,7 +92,7 @@ function main() {
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
   process.on('uncaughtException', (err) => {
-    console.error('monitorWorker: uncaughtException', err && err.stack || err);
+    logger.error(err && err.stack ? err.stack : `monitorWorker: uncaughtException ${String(err)}`, 'main');
     // allow PM2 to restart the worker
     process.exit(1);
   });

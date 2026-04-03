@@ -4,12 +4,17 @@ const { spawn, spawnSync } = require('child_process');
 const EventEmitter = require('events');
 const { recordingDir } = require('../config/paths');
 const wsClientService = require('./wsClientService');
+const { createLogger } = require('../middleware/logger');
+
+const logger = createLogger({ source: 'RecordingService' });
 
 // Enable detailed ffmpeg I/O logging when env var set: FFMPEG_DEBUG=1 or RECORDING_DEBUG=1
 const FFMPEG_DEBUG = !!(process.env.FFMPEG_DEBUG === '1' || process.env.RECORDING_DEBUG === '1');
 
 // ffmpeg args for a null-output astats/ametadata monitor (used to extract RMS levels)
-const ASTATS_MONITOR_ARGS = ['-map', '0:a', '-af', 'astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level:file=-', '-f', 'null', '-'];
+// -nostats disables the default progress output (size/time/speed)
+// asetnsamples reduces the audio block size so metadata is emitted with lower latency
+const ASTATS_MONITOR_ARGS = ['-hide_banner', '-nostats', '-map', '0:a', '-af', 'asetnsamples=n=256:pad=1,astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level:file=-', '-f', 'null', '-'];
 
 function normalizeAvfoundationAudioDevice(device) {
   if (!device || device === 'default') {
@@ -29,7 +34,6 @@ function normalizeAvfoundationAudioDevice(device) {
 
 function listAvfoundationDevicesSync(ffmpegPath) {
   try {
-    const whichCmd = process.platform === 'win32' ? 'where' : 'which';
     const spawnSync = require('child_process').spawnSync;
     const ff = spawnSync(ffmpegPath || resolveFfmpegPath(), ['-f', 'avfoundation', '-list_devices', 'true', '-i', ''], { encoding: 'utf8' });
     // ffmpeg prints device list to stderr
@@ -41,19 +45,97 @@ function listAvfoundationDevicesSync(ffmpegPath) {
   }
 }
 
+function isAvfoundationDeviceAvailable(device, ffmpegPath) {
+  if (!device || device === 'default') {
+    return true;
+  }
+
+  const normalizedDevice = normalizeAvfoundationAudioDevice(device).replace(/^:/, '');
+  const deviceIndexMatch = String(normalizedDevice).match(/^(\d+)$/);
+  const devList = listAvfoundationDevicesSync(ffmpegPath).map((line) => String(line).toLowerCase());
+
+  if (devList.length === 0) {
+    return true;
+  }
+
+  if (deviceIndexMatch) {
+    const targetIndex = deviceIndexMatch[1];
+    return devList.some((line) => {
+      const indexMatch = line.match(/\[(\d+)\]/);
+      if (indexMatch && indexMatch[1] === targetIndex) {
+        return true;
+      }
+      return line.includes(`:${targetIndex}`) || line.includes(`'${targetIndex}'`) || line.includes(` ${targetIndex} `);
+    });
+  }
+
+  return devList.some((line) => line.includes(normalizedDevice.toLowerCase()));
+}
+
 // Try to resolve built ffmpeg path from local release or installed package, fallback to system `ffmpeg`
 function resolveFfmpegPath() {
+  const candidates = [];
+
   try {
     const rel = require('../../release');
-    if (rel && rel.ffmpegPath) return rel.ffmpegPath;
+    if (rel && rel.ffmpegPath) candidates.push(rel.ffmpegPath);
   } catch (e) { }
 
   try {
     const pkg = require('ffmpeg-min-local');
-    if (pkg && pkg.ffmpegPath) return pkg.ffmpegPath;
+    if (pkg && pkg.ffmpegPath) candidates.push(pkg.ffmpegPath);
   } catch (e) { }
 
+  candidates.push('ffmpeg');
+
+  const whichCmd = process.platform === 'win32' ? 'where' : 'which';
+
+  for (const candidate of candidates) {
+    if (!candidate) {
+      continue;
+    }
+
+    if (candidate === 'ffmpeg') {
+      const probe = spawnSync(whichCmd, ['ffmpeg'], { encoding: 'utf8' });
+      if (probe && probe.status === 0) {
+        return 'ffmpeg';
+      }
+      continue;
+    }
+
+    if (path.isAbsolute(candidate) || candidate.includes(path.sep)) {
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+      continue;
+    }
+
+    const probe = spawnSync(whichCmd, [candidate], { encoding: 'utf8' });
+    if (probe && probe.status === 0) {
+      return candidate;
+    }
+  }
+
   return 'ffmpeg';
+}
+
+function ensureRecordingFileExists(filePath) {
+  if (fs.existsSync(filePath)) {
+    return;
+  }
+
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.closeSync(fs.openSync(filePath, 'a'));
+}
+
+function formatMonitorLogTime(timestamp) {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return String(timestamp);
+  }
+
+  const pad = (value, length = 2) => String(value).padStart(length, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.${pad(date.getMilliseconds(), 3)}`;
 }
 
 class RecordingService {
@@ -104,14 +186,16 @@ class RecordingService {
   // - clientId: associated client
   // - ffmpegArgs: array of args to pass to ffmpeg (if omitted a sensible default will be used)
   // - outFileName: optional filename (defaults to recording-<timestamp>.webm)
-  startRecordingWithFfmpeg(clientId, device) {
+  startRecordingWithFfmpeg(clientId, ffmpegArgsOrDevice, outFileName) {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const fileName = `recording-${timestamp}.mp4`;
+    const fileName = outFileName || `recording-${timestamp}.mp4`;
     const filePath = path.join(recordingDir, fileName);
 
     if (!fs.existsSync(recordingDir)) {
       fs.mkdirSync(recordingDir, { recursive: true });
     }
+    const providedArgs = Array.isArray(ffmpegArgsOrDevice) ? ffmpegArgsOrDevice : null;
+    const device = Array.isArray(ffmpegArgsOrDevice) ? null : ffmpegArgsOrDevice;
 
     const recordingInfo = {
       fileName,
@@ -145,49 +229,51 @@ class RecordingService {
     }
 
     // Prepare final spawn arguments.
-    // If caller did not provide ffmpegArgs, build platform-aware defaults (input device + sensible encoding).
+    // If caller provided ffmpegArgs, use them directly and append output file if needed.
+    // Otherwise, build platform-aware defaults from a device value.
     let spawnArgs;
     const platform = process.platform;
-    // For recording-only we do not include astats monitoring here; monitoring is a separate process
-    const filter = null;
-    console.log(`No ffmpeg args provided, using platform-aware defaults for ${platform}`);
-    if (platform === 'darwin') {
-      // For macOS (avfoundation) use an asplit + astats filter_complex so we can
-      // both encode to a file and monitor RMS levels in stderr simultaneously.
-      // This produces lines like lavfi.astats.Overall.RMS_level which we parse.
-      // avfoundation expects audio-only inputs in the form ':<index>' or ':<name>'.
-      const macDevice = normalizeAvfoundationAudioDevice(device);
-      // spawnArgs order: input spec, filter_complex, map output stream, codec settings, output file
-      spawnArgs = [
-        '-f', 'avfoundation', '-i', macDevice,
-        '-vn',
-        '-c:a', 'aac', '-b:a', '128k',
-        '-y', filePath
-      ];
-    } else if (platform === 'win32') {
-      // use dshow; allow override via env WIN_FFMPEG_DEVICE (e.g. "audio=virtual-audio-capturer")
-      const winDev = device || 'audio=default';
-      spawnArgs = [
-        '-f', 'dshow', '-i', winDev,
-        '-vn',
-        '-c:a', 'aac', '-b:a', '128k',
-        '-y', filePath
-      ];    
-    } else {
-      // assume Linux/ALSA by default; allow override via LINUX_FFMPEG_DEVICE
-      const linuxDev = device || 'default';
+    if (providedArgs) {
+      spawnArgs = providedArgs.slice();
 
-      spawnArgs = [
-        '-f', 'alsa', '-i', linuxDev,
-        '-vn',
-        '-c:a', 'aac', '-b:a', '128k',
-        '-y', filePath
-      ];  
+      const hasOutputTarget = spawnArgs.includes(filePath) || spawnArgs.includes(outFileName);
+      if (!hasOutputTarget) {
+        spawnArgs.push(filePath);
+      }
+      logger.info(`[RecordingService] Using provided ffmpeg args for ${fileName}`, 'startRecordingWithFfmpeg');
+    } else {
+      logger.info(`No ffmpeg args provided, using platform-aware defaults for ${platform}`, 'startRecordingWithFfmpeg');
+      if (platform === 'darwin') {
+        const macDevice = normalizeAvfoundationAudioDevice(device);
+        spawnArgs = [
+          '-f', 'avfoundation', '-i', macDevice,
+          '-vn',
+          '-c:a', 'aac', '-b:a', '128k',
+          '-y', filePath
+        ];
+      } else if (platform === 'win32') {
+        const winDev = device || 'audio=default';
+        spawnArgs = [
+          '-f', 'dshow', '-i', winDev,
+          '-vn',
+          '-c:a', 'aac', '-b:a', '128k',
+          '-y', filePath
+        ];
+      } else {
+        const linuxDev = device || 'default';
+
+        spawnArgs = [
+          '-f', 'alsa', '-i', linuxDev,
+          '-vn',
+          '-c:a', 'aac', '-b:a', '128k',
+          '-y', filePath
+        ];
+      }
     }
 
     let ff;
     try {
-      console.log('Starting ffmpeg:', ffmpegPath, spawnArgs.join(' '));
+      logger.info(`Starting ffmpeg: ${ffmpegPath} ${spawnArgs.join(' ')}`, 'startRecordingWithFfmpeg');
       // Keep stdin for graceful shutdown and stderr for astats metadata output.
       ff = spawn(ffmpegPath, spawnArgs, { stdio: ['pipe', 'ignore', 'pipe'] });
     } catch (spawnErr) {
@@ -195,20 +281,11 @@ class RecordingService {
       recordingInfo.ffmpegProc = null;
       throw spawnErr;
     }
-    console.log(`ffmpeg started with PID ${ff.Errorno ? ff.Errorno : ff.pid}`);
+    logger.info(`ffmpeg started with PID ${ff.Errorno ? ff.Errorno : ff.pid}`, 'startRecordingWithFfmpeg');
     // Parse stderr for astats/ametadata output to extract RMS level (dB) and broadcast volume
     ff.stderr.on('data', (chunk) => {
       try {
         const text = chunk.toString();
-        // optional debug: output a trimmed stderr snippet for remote troubleshooting
-        if (FFMPEG_DEBUG) {
-          try {
-            const dbg = text.replace(/\s+/g, ' ').trim().slice(0, 1000);
-            console.log(`[RecordingService][ffmpeg-stderr][${fileName}] ${dbg}`);
-          } catch (e) {
-            // ignore debug logging errors
-          }
-        }
         const m1 = text.match(/lavfi\.astats\.Overall\.RMS_level\s*=?\s*([-\d.]+)\b/);
         let dbValue = null;
         if (m1) dbValue = parseFloat(m1[1]);
@@ -220,7 +297,7 @@ class RecordingService {
           const clamped = Math.max(-60, Math.min(0, dbValue));
           const normalized = Math.round((1 - (clamped / -60)) * 100);
           recordingInfo.volumeData.push({ timestamp: Date.now(), volume: normalized });
-          console.log(`[RecordingService] volume update for ${fileName}: ${normalized} (raw dB: ${dbValue})`);
+          logger.info(`[RecordingService] volume update for ${fileName}: ${normalized} (raw dB: ${dbValue})`, 'startRecordingWithFfmpeg');
           this.broadcastVolume({ fileName, volume: normalized, timestamp: Date.now() });
         }
       } catch (e) {
@@ -237,7 +314,7 @@ class RecordingService {
     ff.on('error', (err) => {
       recordingInfo.isRecording = false;
       recordingInfo.ffmpegProc = null;
-      console.error('ffmpeg spawn error:', err);
+      logger.error(err instanceof Error ? err : `ffmpeg spawn error: ${String(err)}`, 'startRecordingWithFfmpeg');
     });
 
     recordingInfo.ffmpegProc = ff;
@@ -249,6 +326,7 @@ class RecordingService {
   // Start a separate ffmpeg process that only monitors audio levels (astats -> stderr)
   // clientId: the ws client id that requested monitoring; device: platform-specific device string/index
   startVolumeMonitor(clientId, device) {
+    logger.info(`startVolumeMonitor called for client ${clientId} device=${device}`, 'startVolumeMonitor');
     if (this.monitorProcs.has(clientId)) return { success: false, error: 'monitor-already-running' };
 
     const platform = process.platform;
@@ -257,15 +335,12 @@ class RecordingService {
     if (platform === 'darwin' && device) {
       try {
         const ffPath = resolveFfmpegPath();
-        const devList = listAvfoundationDevicesSync(ffPath).map(l => String(l).toLowerCase());
-        const macDeviceNorm = normalizeAvfoundationAudioDevice(device).replace(/^:/, '').toLowerCase();
-        const found = devList.some(l => l.includes(macDeviceNorm) || l.includes(`:${macDeviceNorm}`) || l.includes(`'${macDeviceNorm}'`));
-        if (!found) {
-          console.error(`startVolumeMonitor: avfoundation device not found for '${device}'`);
+        if (!isAvfoundationDeviceAvailable(device, ffPath)) {
+          logger.error(`startVolumeMonitor: avfoundation device not found for '${device}'`, 'startVolumeMonitor');
           return { success: false, error: 'device-not-found' };
         }
       } catch (e) {
-        console.error('startVolumeMonitor: device validation failed', e && e.message);
+        logger.error(`startVolumeMonitor: device validation failed ${e && e.message ? e.message : e}`, 'startVolumeMonitor');
         return { success: false, error: 'device-validation-failed' };
       }
     }
@@ -282,7 +357,7 @@ class RecordingService {
 
     const meta = { proc: null, restarts: 0, intentionalStop: false, lastRestartAt: 0, lastSentAt: 0 };
     const MAX_RESTARTS = 5;
-    const RATE_MS = 100; // minimum ms between sent volume updates per client
+    const RATE_MS = 30; // minimum ms between sent volume updates per client
 
     const spawnMonitor = () => {
       if (meta.intentionalStop) return;
@@ -290,27 +365,24 @@ class RecordingService {
       if (platform === 'darwin' && device) {
         try {
           const ffPath = resolveFfmpegPath();
-          const devList = listAvfoundationDevicesSync(ffPath);
-          const macDevice = normalizeAvfoundationAudioDevice(device).replace(/^:/, '');
-          const found = devList.some(l => l.includes(macDevice) || l.match(new RegExp("\\\\[" + macDevice + "\\\\]")));
-          if (!found) {
-            console.error(`ffmpeg monitor validation: avfoundation device not found for '${device}'`);
+          if (!isAvfoundationDeviceAvailable(device, ffPath)) {
+            logger.error(`ffmpeg monitor validation: avfoundation device not found for '${device}'`, 'spawnMonitor');
             // Inform caller synchronously by setting an error marker and scheduling no spawn
             meta.lastError = `device-not-found:${device}`;
             return scheduleRestart();
           }
         } catch (e) {
-          console.error('ffmpeg monitor validation failed', e && e.message);
+          logger.error(`ffmpeg monitor validation failed ${e && e.message ? e.message : e}`, 'spawnMonitor');
         }
       }
 
       const monitorArgs = baseArgs.concat(ASTATS_MONITOR_ARGS);
       let ff;
       try {
-        console.log('Starting ffmpeg monitor for client', clientId, monitorArgs.join(' '));
-        ff = spawn(resolveFfmpegPath(), monitorArgs, { stdio: ['pipe', 'ignore', 'pipe'] });
+        logger.info(`Starting ffmpeg monitor for client ${clientId} ${monitorArgs.join(' ')}`, 'spawnMonitor');
+        ff = spawn(resolveFfmpegPath(), monitorArgs, { stdio: ['pipe', 'pipe', 'pipe'] });
       } catch (e) {
-        console.error('Failed to spawn ffmpeg monitor for', clientId, e && e.message ? e.message : e);
+        logger.error(`Failed to spawn ffmpeg monitor for ${clientId} ${e && e.message ? e.message : e}`, 'spawnMonitor');
         scheduleRestart();
         return;
       }
@@ -318,12 +390,11 @@ class RecordingService {
       meta.proc = ff;
       meta.lastRestartAt = Date.now();
 
-      ff.stderr.on('data', (chunk) => {
+      const handleMonitorOutput = (source, chunk) => {
         try {
           const text = chunk.toString();
-          if (FFMPEG_DEBUG) {
-            try { console.log(`[RecordingService][ffmpeg-monitor-stderr][${clientId}] ${text.replace(/\s+/g,' ').trim().slice(0,1000)}`); } catch (e) {}
-          }
+          const logTime = formatMonitorLogTime(Date.now());
+          try { logger.info(`[ffmpeg-monitor-${source}][${clientId} ${logTime}] ${text.replace(/\s+/g,' ').trim().slice(0,1000)}`, 'handleMonitorOutput'); } catch (e) {}
           const m1 = text.match(/lavfi\.astats\.Overall\.RMS_level\s*=?\s*([-\d.]+)\b/);
           let dbValue = null;
           if (m1) dbValue = parseFloat(m1[1]);
@@ -337,11 +408,14 @@ class RecordingService {
             meta.lastSentAt = now;
             const clamped = Math.max(-60, Math.min(0, dbValue));
             const normalized = Math.round((1 - (clamped / -60)) * 100);
-            const payload = { clientId, volume: normalized, rawDb: dbValue, timestamp: now };
+            const payload = normalized;
             try { wsClientService.sendToClient(clientId, payload); } catch (e) {}
           }
         } catch (e) { }
-      });
+      };
+
+      ff.stdout.on('data', (chunk) => handleMonitorOutput('stdout', chunk));
+      ff.stderr.on('data', (chunk) => handleMonitorOutput('stderr', chunk));
 
       ff.on('exit', (code, sig) => {
         meta.proc = null;
@@ -352,7 +426,7 @@ class RecordingService {
         // unexpected exit -> try restart with backoff
         meta.restarts = (meta.restarts || 0) + 1;
         if (meta.restarts > MAX_RESTARTS) {
-          console.error(`ffmpeg monitor for ${clientId} exceeded max restarts (${MAX_RESTARTS}), giving up`);
+          logger.error(`ffmpeg monitor for ${clientId} exceeded max restarts (${MAX_RESTARTS}), giving up`, 'ffmpegMonitorExit');
           this.monitorProcs.delete(clientId);
           return;
         }
@@ -360,13 +434,13 @@ class RecordingService {
       });
 
       ff.on('error', (err) => {
-        console.error('ffmpeg monitor error for', clientId, err && err.message ? err.message : err);
+        logger.error(`ffmpeg monitor error for ${clientId} ${err && err.message ? err.message : err}`, 'ffmpegMonitorError');
       });
     };
 
     const scheduleRestart = () => {
       const backoff = Math.min(30000, 1000 * Math.pow(2, meta.restarts));
-      console.log(`scheduling restart for monitor ${clientId} in ${backoff}ms (attempt ${meta.restarts})`);
+      logger.warning(`scheduling restart for monitor ${clientId} in ${backoff}ms (attempt ${meta.restarts})`, 'scheduleRestart');
       setTimeout(() => {
         if (meta.intentionalStop) return;
         spawnMonitor();

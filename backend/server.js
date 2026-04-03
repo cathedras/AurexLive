@@ -6,6 +6,10 @@ try {
   // ignore if dotenv not installed or file missing
 }
 
+const { installGlobalLogger } = require('./middleware/logger');
+installGlobalLogger();
+const { createLogger } = require('./middleware/logger');
+
 const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
@@ -35,15 +39,17 @@ const recordingRoutes = require('./routes/recordingRoutes'); // 引入录音路�
 const musicPlaybackService = require('./services/musicPlaybackService');
 const requestLogger = require('./middleware/requestLogger');
 const { notFoundHandler, errorHandler } = require('./middleware/errorHandlers');
+const createStartupMonitor = require('./middleware/startupMonitor');
+const logger = createLogger({ source: 'server' });
 // Prefer a generated OpenAPI JSON if present (from `backend/tools/generate-openapi.js`).
 let openApiSpec;
 const generatedSpecPath = path.join(__dirname, 'config', 'openapi.generated.json');
 if (fs.existsSync(generatedSpecPath)) {
   try {
     openApiSpec = require('./config/openapi.generated.json');
-    console.log('[Swagger] Loaded generated OpenAPI spec:', generatedSpecPath);
+    logger.info(`[Swagger] Loaded generated OpenAPI spec: ${generatedSpecPath}`);
   } catch (err) {
-    console.warn('[Swagger] Failed to load generated OpenAPI spec, falling back to static `config/openapi.js`.', err.message);
+    logger.warning(`[Swagger] Failed to load generated OpenAPI spec, falling back to static config/openapi.js. ${err.message}`);
     openApiSpec = require('./config/openapi');
   }
 } else {
@@ -54,6 +60,8 @@ if (fs.existsSync(generatedSpecPath)) {
 const app = express();
 const server = http.createServer(app);
 const port = process.env.PORT || 3000;
+const frontendDevServerUrl = process.env.FRONTEND_DEV_SERVER_URL || 'http://localhost:5173';
+const useViteDevServer = process.env.NODE_ENV !== 'production' && process.env.USE_VITE_DEV_SERVER !== '0';
 
 // WebSocket 服务（已抽离到 backend/wsServer.js）
 const initWebSocket = require('./wsServer');
@@ -86,9 +94,9 @@ if (SWAGGER_AUTO_EXPOSE) {
     })
   );
 
-  console.log('[Swagger] API docs available at /docs (openapi JSON at /docs/openapi.json)');
+  logger.info('[Swagger] API docs available at /docs (openapi JSON at /docs/openapi.json)');
 } else {
-  console.log('[Swagger] API docs are disabled. Set SWAGGER_AUTO_EXPOSE=1 to enable.');
+  logger.info('[Swagger] API docs are disabled. Set SWAGGER_AUTO_EXPOSE=1 to enable.');
 }
 
 app.use('/v1', uploadRoutes);
@@ -107,7 +115,18 @@ app.use('/v1/recordings', express.static(recordingDir)); // 托管录音文件
 
 const hasReactDist = fs.existsSync(reactDistDir);
 
-if (hasReactDist) {
+if (useViteDevServer) {
+  const redirectToVite = (req, res) => {
+    const targetPath = req.originalUrl || req.url || '/page';
+    res.redirect(`${frontendDevServerUrl}${targetPath}`);
+  };
+
+  ['/','/page','/page/upload','/page/music','/page/settings','/page/recording'].forEach((routePath) => {
+    app.get(routePath, redirectToVite);
+  });
+
+  logger.info(`[Frontend] Vite dev server enabled, redirecting page routes to ${frontendDevServerUrl}`);
+} else if (hasReactDist) {
   app.use(express.static(reactDistDir));
 
   ['/page','/page/upload','/page/music','/page/settings', '/page/recording'].forEach((routePath) => {
@@ -130,25 +149,20 @@ app.use(errorHandler);
 
 // 启动服务器
 server.listen(port, () => {
-  console.log(`============================================`);
-  console.log(`演出服务启动成功 🚀 ✅`);
-  console.log(`访问地址: http://localhost:${port}`);
-  console.log(`接口文档: http://localhost:${port}/docs`);
-  console.log(`原始接口文档: http://localhost:${port}/docs/openapi.json`);
-  console.log(`上传文件保存路径: ${uploadDir}`);
-  console.log(`演出记录保存路径: ${showRecordDir}`);
-  console.log(`录音文件保存路径: ${recordingDir}`);
-  console.log(`运行时配置路径: ${runtimeConfigDir}`);
-  console.log(`============================================`);
 
-  musicPlaybackService.restoreFromRuntimeState()
-    .then((state) => {
-      if (state.currentTrack?.programName) {
-        console.log(`\n⚠️  注意：检测到上次播放状态，当前播放: ${state.currentTrack.programName}`);
-        console.log(`如需清理上次播放状态，请删除 runtime/ 目录下的 playback_state.json\n`);
-      }
-    })
-    .catch((error) => {
-      console.warn(`⚠️  注意：未能恢复上次播放状态，将从空闲状态开始`);
-    });
+  logger.info('============================================');
+  logger.info('演出服务启动成功 🚀 ✅');
+  logger.info(`访问地址: http://localhost:${port}`);
+  logger.info(`接口文档: http://localhost:${port}/docs`);
+  logger.info(`原始接口文档: http://localhost:${port}/docs/openapi.json`);
+  logger.info(`上传文件保存路径: ${uploadDir}`);
+  logger.info(`演出记录保存路径: ${showRecordDir}`);
+  logger.info(`录音文件保存路径: ${recordingDir}`);
+  logger.info(`运行时配置路径: ${runtimeConfigDir}`);
+  logger.info('============================================');
+  const startupMonitor = createStartupMonitor({
+    musicPlaybackService
+  });
+  startupMonitor.run();
+  
 });

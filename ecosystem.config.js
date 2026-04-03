@@ -5,7 +5,7 @@ module.exports = {
       script: 'backend/server.js',
       cwd: __dirname,
       instances: 1,
-      exec_mode: 'fork',
+      exec_mode: 'cluster',
       autorestart: true,
       watch: [
         'backend/server.js',
@@ -41,7 +41,7 @@ module.exports = {
       script: 'backend/monitorWorker.js',
       cwd: __dirname,
       instances: 1,
-      exec_mode: 'fork',
+      exec_mode: 'cluster',
       autorestart: true,
       watch: [
         'runtime/monitors.json',

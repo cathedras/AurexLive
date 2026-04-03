@@ -1,13 +1,16 @@
 #!/usr/bin/env node
 const path = require('path');
 const fs = require('fs');
+const { createLogger } = require('../middleware/logger');
+
+const logger = createLogger({ source: 'generate-openapi' });
 
 // Try to load swagger-jsdoc
 let swaggerJSDoc;
 try {
   swaggerJSDoc = require('swagger-jsdoc');
 } catch (err) {
-  console.error('swagger-jsdoc is not installed. Run `npm --prefix backend install swagger-jsdoc` to install it.');
+  logger.error('swagger-jsdoc is not installed. Run `npm --prefix backend install swagger-jsdoc` to install it.', 'main');
   process.exit(1);
 }
 
@@ -33,8 +36,8 @@ const options = {
 try {
   const spec = swaggerJSDoc(options);
   fs.writeFileSync(outPath, JSON.stringify(spec, null, 2), 'utf8');
-  console.log('[openapi] Generated', outPath);
+  logger.info(`[openapi] Generated ${outPath}`, 'main');
 } catch (err) {
-  console.error('[openapi] generation failed:', err && err.message ? err.message : err);
+  logger.error(`[openapi] generation failed: ${err && err.message ? err.message : err}`, 'main');
   process.exit(2);
 }

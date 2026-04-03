@@ -4,6 +4,9 @@ const fs = require('fs');
 const path = require('path');
 const recordingService = require('./services/recordingService');
 const wsClientService = require('./services/wsClientService');
+const { createLogger } = require('./middleware/logger');
+
+const logger = createLogger({ source: 'initWebSocket' });
 
 const monitorsPath = path.resolve(__dirname, '..', 'runtime', 'monitors.json');
 
@@ -12,7 +15,7 @@ function ensureMonitorsFile() {
     const dir = path.dirname(monitorsPath);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     if (!fs.existsSync(monitorsPath)) fs.writeFileSync(monitorsPath, '[]', 'utf8');
-  } catch (e) { console.error('wsServer: ensureMonitorsFile error', e && e.message); }
+  } catch (e) { logger.error(`wsServer: ensureMonitorsFile error ${e && e.message ? e.message : e}`, 'ensureMonitorsFile'); }
 }
 
 function readMonitorsFile() {
@@ -21,7 +24,7 @@ function readMonitorsFile() {
     const raw = fs.readFileSync(monitorsPath, 'utf8');
     return JSON.parse(raw || '[]');
   } catch (e) {
-    console.error('wsServer: failed to read monitors file', e && e.message);
+    logger.error(`wsServer: failed to read monitors file ${e && e.message ? e.message : e}`, 'readMonitorsFile');
     return [];
   }
 }
@@ -33,7 +36,7 @@ function writeMonitorsFile(list) {
     fs.renameSync(tmp, monitorsPath);
     return true;
   } catch (e) {
-    console.error('wsServer: failed to write monitors file', e && e.message);
+    logger.error(`wsServer: failed to write monitors file ${e && e.message ? e.message : e}`, 'writeMonitorsFile');
     return false;
   }
 }
@@ -78,7 +81,7 @@ module.exports = function initWebSocket(server) {
       });
       console.log('Note: if front-end is served over HTTPS use wss:// and configure TLS/proxy accordingly.');
     } catch (e) {
-      console.log('WebSocket 地址: ws://localhost:3000');
+      logger.info('WebSocket 地址: ws://localhost:3000', 'printEndpoints');
     }
   }
 
@@ -100,7 +103,7 @@ module.exports = function initWebSocket(server) {
     try {
       const remote = req && req.socket ? req.socket.remoteAddress : 'unknown'
       const rpath = req && req.url ? req.url : '/'
-      console.log(`[WS] new connection from ${remote} path=${rpath}`)
+      logger.info(`[WS] new connection from ${remote} path=${rpath}`, 'connection')
     } catch (e) {}
 
     // 注册客户端并绑定消息处理（由 wsClientService 管理）
@@ -114,68 +117,26 @@ module.exports = function initWebSocket(server) {
     // 发送客户端ID给前端
     safeSend(ws, { type: 'clientId', data: clientId });
 
-    // If this client declared a type starting with 'volume', start a monitoring ffmpeg process
-    try {
-      const client = wsClientService.clients.get(clientId);
-      if (client && client.typeMain === 'volume') {
-        const device = client.typeSub || null; // allow client to request specific device via type suffix
-        // start monitor immediately and persist intent so monitorWorker can restore on restart
-        const res = recordingService.startVolumeMonitor(clientId, device);
-        safeSend(ws, { type: 'monitor-start', data: res });
-        try { addMonitorEntry(clientId, device); } catch (e) { console.error('wsServer: addMonitorEntry error', e && e.message); }
-        console.log(`[WS] started volume monitor for client ${clientId} device=${device} res=${JSON.stringify(res)}`);
-      }
-    } catch (e) { }
-
     // note: ws 'message' callback signature: (message, isBinary)
     ws.on('message', async (message, isBinary) => {
       // 支持二进制和文本 — 增加日志以便诊断客户端发送但服务端未接收的问题
       try {
-        console.log('[WS] raw message received, isBuffer=', Buffer.isBuffer(message), 'len=', Buffer.isBuffer(message) ? message.length : (message && message.toString ? String(message).length : 'n/a'))
+        logger.info(`raw message received, isBuffer=${Buffer.isBuffer(message)} len=${Buffer.isBuffer(message) ? message.length : (message && message.toString ? String(message).length : 'n/a')}`, 'message')
       } catch (e) {}
+      const payload = isBinary ? message : (message && message.toString ? message.toString() : '');
+      logger.info(`payload after processing, content=${payload} isBinary=${isBinary} len=${payload && payload.length ? payload.length : 'n/a'}`, 'message');
 
-      let payload = null;
-      // Only treat as binary when the isBinary flag is true. Some text frames may
-      // arrive as Buffer objects but are not binary frames per the ws flag.
-      if (isBinary) {
-        // 若收到二进制，直接当作音频 chunk（二进制）需要额外约定字段，跳过自动处理
-        console.log('[WS] binary frame received (isBinary=true) length=', Buffer.isBuffer(message) ? message.length : 'n/a')
-        return;
-      }
-
-      try {
-        // If the frame is binary (isBinary === true) treat as binary chunk.
-        if (isBinary) {
-          // Treat binary frames as raw audio chunks: measure volume and broadcast to clients.
-          try {
-            const buf = Buffer.isBuffer(message) ? message : Buffer.from(message);
-            let volume = null;
-            try {
-              volume = recordingService.calculateVolume(buf);
-            } catch (e) {
-              // calculateVolume may fail for encoded containers; ignore and leave volume=null
-            }
-
-            const volPayload = { clientId, volume, timestamp: Date.now() };
-            // Broadcast volume to all connected clients
-            try { recordingService.broadcastVolume(volPayload); } catch (e) {}
-          } catch (e) {
-            // ignore processing errors but log
-            console.warn('[WS] failed to process binary frame', e && e.message ? e.message : e);
-          }
-          return;
+      let parsedPayload = payload;
+      if (!isBinary && typeof payload === 'string') {
+        try {
+          parsedPayload = JSON.parse(payload);
+        } catch (parseErr) {
+          logger.warning(`failed to parse JSON payload: ${parseErr && parseErr.message ? parseErr.message : parseErr}`, 'message');
         }
-
-        const text = (typeof message === 'string') ? message : message.toString();
-        payload = JSON.parse(text);
-      } catch (e) {
-        // If message is not JSON, treat it as raw text and handle as a demo echo
-        const text = (typeof message === 'string') ? message : (message && message.toString ? message.toString() : '');
-        payload = { type: 'raw', data: text };
       }
 
-      const { type, data } = payload || {};
-      console.log('[WS]', type, data);
+      const { type, data } = parsedPayload || {};
+      logger.info(`message parsed, type=${type} data=${JSON.stringify(data)}`, 'message');
       try {
         if (type === 'identify') {
           const { clientType } = data || {};
@@ -184,7 +145,7 @@ module.exports = function initWebSocket(server) {
           return;
         }
         if (type === 'subscribe-volume') {
-          const { fileName } = data || {};
+          const { fileName, device } = data || {};
           if (fileName) {
             // 存储客户端订阅的录音文件
             const client = wsClientService.clients.get(clientId);
@@ -192,13 +153,24 @@ module.exports = function initWebSocket(server) {
               client.subscribedFile = fileName;
             }
             safeSend(ws, { type: 'subscribe-volume-result', success: true, fileName });
-            console.log(`[WS] client ${clientId} subscribed to volume for ${fileName}`);
+            logger.info(`client ${clientId} subscribed to volume for ${fileName}`, 'message');
+                // If this client declared a type starting with 'volume', start a monitoring ffmpeg process
+            try {
+                const monitorDevice = device || (client && client.typeSub) || null; // allow client to request specific device via message or type suffix
+                // start monitor immediately and persist intent so monitorWorker can restore on restart
+                const res = recordingService.startVolumeMonitor(clientId, monitorDevice);
+                safeSend(ws, { type: 'monitor-start', data: res });
+                try { addMonitorEntry(clientId, monitorDevice); } catch (e) { logger.error(`wsServer: addMonitorEntry error ${e && e.message ? e.message : e}`, 'addMonitorEntry'); }
+                logger.info(`started volume monitor for client ${clientId} device=${monitorDevice} res=${JSON.stringify(res)}`, 'message');
+            } catch (e) {
+              logger.warning(`failed to start volume monitor for client ${clientId}: ${e && e.message ? e.message : e}`, 'message');
+            }
+
           } else {
             safeSend(ws, { type: 'subscribe-volume-result', success: false, error: 'missing_fileName' });
           }
           return;
-        }
-        if (type === 'add-chunk') {
+        } else if (type === 'add-chunk') {
           // data: { fileName, chunkBase64 }
           const { fileName, chunkBase64 } = data || {};
           if (fileName && chunkBase64) {
@@ -221,18 +193,18 @@ module.exports = function initWebSocket(server) {
       }
     });
     ws.on('close', (code, reason) => {
-      console.log(`[WS] client ${clientId} disconnected code=${code} reason=${reason && reason.toString ? reason.toString() : reason}`)
+      logger.info(`client ${clientId} disconnected code=${code} reason=${reason && reason.toString ? reason.toString() : reason}`, 'close')
       try {
         recordingService.stopVolumeMonitor(clientId);
       } catch (e) {}
-      try { removeMonitorEntry(clientId); } catch (e) { console.error('wsServer: removeMonitorEntry error', e && e.message); }
+      try { removeMonitorEntry(clientId); } catch (e) { logger.error(`wsServer: removeMonitorEntry error ${e && e.message ? e.message : e}`, 'removeMonitorEntry'); }
     })
     ws.on('error', (err) => {
-      console.warn(`[WS] client ${clientId} error:`, err && err.message ? err.message : err)
+      logger.warning(`client ${clientId} error: ${err && err.message ? err.message : err}`, 'error')
     })
   });
 
   wss.on('error', (err) => {
-    console.error('[WS] server error', err)
+    logger.error(err instanceof Error ? err : `[WS] server error ${String(err)}`, 'server')
   })
 };

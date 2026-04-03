@@ -92,7 +92,24 @@ const RecordingPage = () => {
           }
 
           setDevices(parsed);
-          if (parsed.length) setSelectedDevice(parsed[0].value);
+          if (parsed.length) {
+            // Pick a sensible default based on detected platform
+            let defaultDevice;
+            if (plat === 'darwin') {
+              // prefer built-in/internal microphones when available
+              defaultDevice = parsed.find(d => /macbook|built-?in|internal|default/i.test(d.label))?.value || parsed[0].value;
+            } else if (plat === 'win32' || plat === 'windows') {
+              // prefer entries mentioning Microphone or Default on Windows
+              defaultDevice = parsed.find(d => /microphone|default|loopback/i.test(d.label))?.value || parsed[0].value;
+            } else if (plat === 'linux') {
+              // prefer pulse/alsa/default on Linux
+              defaultDevice = parsed.find(d => /default|pulse|alsa/i.test(d.label))?.value || parsed[0].value;
+            } else {
+              defaultDevice = parsed[0].value;
+            }
+
+            setSelectedDevice(defaultDevice);
+          }
         }
       } catch (e) {
         // ignore device listing errors
@@ -174,10 +191,12 @@ const RecordingPage = () => {
 
     try {
       // 第1步：先连接 WebSocket（确保能收到音量数据）
-      socket = await wsClientService.connect('volume-binary',
+      socket = await wsClientService.connect(`volume-${selectedDevice}`,
         (data) => {
           // 处理音量数据
-          if (data && data.volume !== undefined) {
+          if (typeof data === 'number') {
+            setVolume(data || 0);
+          } else if (data && data.volume !== undefined) {
             setVolume(data.volume || 0);
           }
         },
@@ -219,7 +238,7 @@ const RecordingPage = () => {
       // 第4步：发送订阅命令，让服务端知道这个客户端要接收该录音的音量
       wsClientService.sendJsonAsText(socket, {
         type: 'subscribe-volume',
-        data: { fileName }
+        data: { fileName, device: deviceArg }
       });
 
       // 第5步：启动计时器

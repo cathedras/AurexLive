@@ -51,7 +51,7 @@ export function sendJsonAsBinary(ws, obj) {
 // Connect wrapper that attempts multiple urls (same behavior as previous connectRecordingSocket)
 export async function connect(param, onMessageVolume, onOpen, onClose, onGenericMessage) {
   const attemptUrls = buildWsAttemptUrls(param);
-
+  console.log('WSClientService connect, attemptUrls=', attemptUrls);
   return new Promise((resolve, reject) => {
     let finished = false;
     let ai = 0;

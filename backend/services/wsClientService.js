@@ -60,7 +60,7 @@ class WsClientService {
         const ws = client.ws;
         try {
             if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: client.type, data: message }));
+                ws.send(JSON.stringify({ type: client.typeMain || client.type, data: message }));
                 return true;
             }
         } catch (e) {

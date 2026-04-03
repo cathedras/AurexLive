@@ -2,6 +2,9 @@ const {
   notFoundHtmlPath,
   internalServerErrorHtmlPath
 } = require('../config/paths');
+const { createLogger } = require('./logger');
+
+const logger = createLogger({ source: 'errorHandler' });
 
 function prefersHtml(req) {
   const accept = String(req.headers.accept || '');
@@ -20,7 +23,7 @@ function notFoundHandler(req, res) {
 }
 
 function errorHandler(err, req, res, next) {
-  console.error('Unhandled error:', err);
+  logger.error(err instanceof Error ? err : `Unhandled error: ${String(err)}`);
 
   if (res.headersSent) {
     return next(err);

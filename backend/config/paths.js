@@ -1,5 +1,8 @@
 const path = require('path');
 const fs = require('fs');
+const { createLogger } = require('../middleware/logger');
+
+const logger = createLogger({ source: 'paths' });
 
 const projectRoot = path.join(__dirname, '..', '..');
 const uploadDir = path.join(projectRoot, 'uploads');
@@ -43,7 +46,7 @@ function migrateLegacyRuntimeFiles() {
     }
 
     fs.renameSync(legacyPath, targetPath);
-    console.log(`已迁移运行时配置：${legacyPath} -> ${targetPath}`);
+    logger.info(`已迁移运行时配置：${legacyPath} -> ${targetPath}`);
   });
 }
 
@@ -51,7 +54,7 @@ function ensureDirectories() {
   [uploadDir, showRecordDir, runtimeConfigDir, recordingDir].forEach(dir => {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
-      console.log(`已创建目录：${dir}`);
+      logger.info(`已创建目录：${dir}`);
     }
   });
 

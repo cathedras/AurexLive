@@ -1,12 +1,15 @@
 #!/usr/bin/env node
 const path = require('path');
 const { spawn } = require('child_process');
+const { createLogger } = require('../middleware/logger');
+
+const logger = createLogger({ source: 'watch-openapi' });
 
 let chokidar;
 try {
   chokidar = require('chokidar');
 } catch (err) {
-  console.error('chokidar is not installed. Run `npm --prefix backend install chokidar` to install it.');
+  logger.error('chokidar is not installed. Run `npm --prefix backend install chokidar` to install it.', 'main');
   process.exit(1);
 }
 
@@ -20,17 +23,17 @@ function generate() {
   const proc = spawn('node', [path.join(__dirname, 'generate-openapi.js')], { stdio: 'inherit' });
   proc.on('close', (code) => {
     if (code === 0) {
-      console.log('[openapi-watch] generation completed');
+      logger.info('[openapi-watch] generation completed', 'generate');
     } else {
-      console.warn('[openapi-watch] generation failed, exit code', code);
+      logger.warning(`[openapi-watch] generation failed, exit code ${code}`, 'generate');
     }
   });
 }
 
 const watcher = chokidar.watch(watchPaths, { ignored: /node_modules|\.git/, ignoreInitial: false });
 watcher.on('all', (event, p) => {
-  console.log('[openapi-watch] detected change:', event, p);
+  logger.info(`[openapi-watch] detected change: ${event} ${p}`, 'watcher');
   generate();
 });
 
-console.log('[openapi-watch] watching', watchPaths.join(', '));
+logger.info(`[openapi-watch] watching ${watchPaths.join(', ')}`, 'main');
