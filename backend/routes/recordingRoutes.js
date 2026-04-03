@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const fs = require('fs');
 const path = require('path');
-const { spawn, spawnSync } = require('child_process');
+const { spawnSync } = require('child_process');
 const recordingService = require('../services/recordingService');
 const ffmpegQueue = require('../services/ffmpegQueueService');
 const { recordingDir } = require('../config/paths');
@@ -11,51 +11,6 @@ const { recordingDir } = require('../config/paths');
 if (!fs.existsSync(recordingDir)) {
   fs.mkdirSync(recordingDir, { recursive: true });
 }
-
-// 获取录音状态
-router.get('/recording-status', (req, res) => {
-  try {
-    const { fileName } = req.query;
-    const status = recordingService.getStatus(fileName);
-    res.json({
-      success: true,
-      data: status,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: '获取录音状态失败',
-      error: error.message,
-    });
-  }
-});
-
-// 开始录音
-router.post('/start-recording', (req, res) => {
-  try {
-    const { clientId } = req.body;
-    if (!clientId) {
-      return res.status(400).json({
-        success: false,
-        message: '缺少客户端ID',
-      });
-    }
-
-    const recordingInfo = recordingService.startRecording(clientId);
-
-    res.json({
-      success: true,
-      message: '录音已开始',
-      data: recordingInfo,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: '开始录音失败',
-      error: error.message,
-    });
-  }
-});
 
 // 后端启动 ffmpeg 录音并可选将 PCM/音量数据通过 SSE/事件广播
 router.post('/start-recording-backend', (req, res) => {
@@ -92,162 +47,7 @@ router.post('/stop-recording-backend', (req, res) => {
   }
 });
 
-// SSE endpoint: subscribe to volume/pcm events for a given recording fileName
-router.get('/recording-sse/:filename', (req, res) => {
-  const { filename } = req.params;
-
-  // set SSE headers
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders && res.flushHeaders();
-
-  // heartbeat
-  const keepAlive = setInterval(() => {
-    res.write(': ping\n\n');
-  }, 15000);
-
-  const listener = (volumeData) => {
-    try {
-      if (!volumeData || volumeData.fileName !== filename) return;
-      // send as JSON event
-      const payload = JSON.stringify(volumeData);
-      res.write(`event: volume\ndata: ${payload}\n\n`);
-    } catch (e) {
-      // ignore
-    }
-  };
-
-  recordingService.onVolume(listener);
-
-  req.on('close', () => {
-    clearInterval(keepAlive);
-    recordingService.offVolume(listener);
-    try { res.end(); } catch (e) {}
-  });
-});
-
-// 新增：通过 ffmpeg 实时计算并推送音量（astats）——支持文件或设备输入
-router.get('/ffmpeg-volume-sse', (req, res) => {
-  const { fileName, device } = req.query;
-
-  // 必须指定 fileName 或 device
-  if (!fileName && !device) {
-    return res.status(400).json({ success: false, message: '缺少 fileName 或 device 参数' });
-  }
-
-  // SSE headers
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders && res.flushHeaders();
-
-  const keepAlive = setInterval(() => {
-    res.write(': ping\n\n');
-  }, 15000);
-
-  // 构建 ffmpeg 参数
-  const ffArgs = [];
-  if (fileName) {
-    const p = path.join(recordingDir, fileName);
-    ffArgs.push('-i', p);
-  } else if (device) {
-    const platform = process.platform;
-    if (platform === 'darwin') {
-      ffArgs.push('-f', 'avfoundation', '-i', device);
-    } else if (platform === 'win32') {
-      ffArgs.push('-f', 'dshow', '-i', device);
-    } else {
-      ffArgs.push('-f', 'alsa', '-i', device);
-    }
-  }
-
-  // 使用 astats 输出 metadata，reset=1 为每帧/块输出
-  ffArgs.push('-vn', '-af', 'astats=metadata=1:reset=1', '-f', 'null', '-');
-
-  const ff = spawn('ffmpeg', ffArgs);
-
-  let buf = '';
-  ff.stderr.on('data', (chunk) => {
-    buf += chunk.toString();
-    const lines = buf.split(/\r?\n/);
-    buf = lines.pop();
-    for (const line of lines) {
-      // 提取 key=value 对（数字）
-      const obj = { source: fileName || device };
-      const re = /([A-Za-z0-9_.]+)=\s*(-?\d+(?:\.\d+)?)/g;
-      let m;
-      while ((m = re.exec(line)) !== null) {
-        obj[m[1]] = parseFloat(m[2]);
-      }
-      if (Object.keys(obj).length > 1) {
-        try {
-          res.write(`event: volume\n`);
-          res.write(`data: ${JSON.stringify(obj)}\n\n`);
-        } catch (e) {
-          // ignore write errors
-        }
-      }
-    }
-  });
-
-  ff.on('exit', (code, sig) => {
-    clearInterval(keepAlive);
-    try {
-      res.write(`event: end\n`);
-      res.write(`data: ${JSON.stringify({ code, sig })}\n\n`);
-    } catch (e) {}
-    try { res.end(); } catch (e) {}
-  });
-
-  ff.on('error', (err) => {
-    clearInterval(keepAlive);
-    try {
-      res.write(`event: error\n`);
-      res.write(`data: ${JSON.stringify({ message: err.message })}\n\n`);
-    } catch (e) {}
-    try { res.end(); } catch (e) {}
-  });
-
-  req.on('close', () => {
-    clearInterval(keepAlive);
-    try { ff.kill('SIGTERM'); } catch (e) {}
-    try { res.end(); } catch (e) {}
-  });
-});
-
-// 接收录音数据块
-router.post('/recording-chunk/:filename', (req, res) => {
-  try {
-    const filename = req.params.filename;
-    const chunk = req.body.chunk; // 音频数据块
-
-    if (!chunk) {
-      return res.status(400).json({
-        success: false,
-        message: '缺少音频数据块',
-      });
-    }
-
-    // 将Base64数据转换为Buffer
-    const buffer = Buffer.from(chunk, 'base64');
-    
-    recordingService.addRecordingChunk(filename, buffer);
-
-    res.json({
-      success: true,
-      message: '音频数据块已接收',
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: '处理音频数据块失败',
-      error: error.message,
-    });
-  }
-});
-
-// 转换/转码入列接口（异步任务）
+// 待开发：前端当前未调用；用于转码任务入列
 router.post('/convert', (req, res) => {
   try {
     const { fileName, inputUrl, outFileName, ffmpegArgs } = req.body || {};
@@ -269,7 +69,7 @@ router.post('/convert', (req, res) => {
   }
 });
 
-// 查询任务状态
+// 待开发：前端当前未调用；用于查询转码队列任务状态
 router.get('/jobs/:id', (req, res) => {
   try {
     const job = ffmpegQueue.getJob(req.params.id);
@@ -280,7 +80,7 @@ router.get('/jobs/:id', (req, res) => {
   }
 });
 
-// 取消任务
+// 待开发：前端当前未调用；用于取消转码队列任务
 router.post('/jobs/:id/cancel', (req, res) => {
   try {
     const ok = ffmpegQueue.cancelJob(req.params.id);

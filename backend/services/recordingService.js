@@ -567,38 +567,6 @@ class RecordingService {
     };
   }
 
-  // 获取录音状态
-  getStatus(fileName) {
-    if (fileName) {
-      const recordingInfo = this.activeRecordings.get(fileName);
-      if (recordingInfo) {
-        return {
-          fileName,
-          isRecording: recordingInfo.isRecording,
-          startTime: recordingInfo.startTime,
-          volume: recordingInfo.volumeData.length > 0 ? recordingInfo.volumeData[recordingInfo.volumeData.length - 1].volume : 0
-        };
-      }
-      return null;
-    }
-
-    // 返回所有活动录音的状态
-    const activeStatuses = [];
-    for (const [fileName, info] of this.activeRecordings) {
-      activeStatuses.push({
-        fileName,
-        isRecording: info.isRecording,
-        startTime: info.startTime,
-        volume: info.volumeData.length > 0 ? info.volumeData[info.volumeData.length - 1].volume : 0
-      });
-    }
-
-    return {
-      activeRecordings: activeStatuses,
-      totalActive: activeStatuses.length,
-    };
-  }
-
   // 获取录音列表
   getList() {
     try {

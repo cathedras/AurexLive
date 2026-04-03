@@ -16,22 +16,6 @@ export const getRecordingStatus = async (fileName) => {
   }
 };
 
-export const sendRecordingChunk = async (chunk, filename) => {
-  try {
-    const arrayBuffer = await chunk.arrayBuffer();
-    const base64Chunk = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-    const response = await fetch(`${BASE_URL}/recording-chunk/${filename}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chunk: base64Chunk }),
-    });
-    return await response.json();
-  } catch (error) {
-    console.error('发送录音数据块失败:', error);
-    throw error;
-  }
-};
-
 export const getRecordingList = async () => {
   try {
     const response = await fetch(`${BASE_URL}/list-recordings`, {
@@ -98,28 +82,6 @@ export const stopRecordingBackend = async (fileName) => {
     console.error('后端停止录音失败:', error);
     throw error;
   }
-};
-
-export const subscribeRecordingSSE = (fileName, onVolume, onOpen, onError) => {
-  const url = `${BASE_URL}/recording-sse/${encodeURIComponent(fileName)}`;
-  const es = new EventSource(url);
-
-  es.addEventListener('volume', (e) => {
-    try {
-      const data = JSON.parse(e.data);
-      onVolume && onVolume(data);
-    } catch (err) {
-      console.error('解析 volume 事件失败', err);
-    }
-  });
-
-  es.onopen = (ev) => onOpen && onOpen(ev);
-  es.onerror = (ev) => onError && onError(ev);
-
-  return {
-    es,
-    close: () => { try { es.close(); } catch (e) {} }
-  };
 };
 
 // ------------------------------

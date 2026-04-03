@@ -538,30 +538,6 @@ const openApiSpec = {
         }
       }
     },
-    '/v1/recording-sse/{filename}': {
-      get: {
-        tags: ['Live'],
-        summary: '通过 SSE 订阅指定录音的音量事件',
-        parameters: [ { name: 'filename', in: 'path', required: true, schema: { type: 'string' } } ],
-        responses: {
-          200: { description: 'SSE 流（event: volume）', content: { 'text/event-stream': { schema: { type: 'string' } } } }
-        }
-      }
-    },
-    '/v1/ffmpeg-volume-sse': {
-      get: {
-        tags: ['Diagnostics'],
-        summary: '基于 ffmpeg astats 实时输出音量（SSE）——用于调试或外部监控',
-        parameters: [
-          { name: 'fileName', in: 'query', required: false, schema: { type: 'string' }, description: '对已存在音频文件进行监控' },
-          { name: 'device', in: 'query', required: false, schema: { type: 'string' }, description: '或传入设备标识以直接采集设备音频（平台依赖）' }
-        ],
-        responses: {
-          200: { description: 'SSE 流（event: volume）', content: { 'text/event-stream': { schema: { type: 'string' } } } },
-          400: { description: '缺少 fileName 或 device', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
-        }
-      }
-    },
     '/v1/music/backend-state': {
       get: {
         tags: ['Music'],

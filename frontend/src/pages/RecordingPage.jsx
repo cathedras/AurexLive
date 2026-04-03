@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useFloatingAudioPlayer } from '../component/FloatingAudioPlayer'
 import Modal from '../component/Modal'
-import { getRecordingList, deleteRecording, sendRecordingChunk, startRecordingBackend, stopRecordingBackend, subscribeRecordingSSE } from '../services/musicPlay';
+import { getRecordingList, deleteRecording, startRecordingBackend, stopRecordingBackend } from '../services/musicPlay';
 import wsClientService from '../services/wsClientService';
 import { Download, Headphones, Trash2, Play, Pause } from 'lucide-react'
 
@@ -203,18 +203,6 @@ const RecordingPage = () => {
       }
     };
   }, [isRecording]);
-
-  // 发送音频数据块到后端
-  const sendAudioChunk = async (chunk, filename) => {
-    try {
-      const result = await sendRecordingChunk(chunk, filename);
-      if (!result.success) {
-        console.error('发送音频数据块失败:', result.message);
-      }
-    } catch (err) {
-      console.error('发送音频数据块时发生错误:', err);
-    }
-  };
 
   // 开始录音
   const startRecordingHandler = async () => {
