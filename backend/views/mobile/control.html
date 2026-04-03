@@ -132,7 +132,7 @@
     }
 
     async function fetchTracks() {
-      const result = await fetch('/v1/musiclist');
+      const result = await fetch('/v1/music/musiclist');
       const data = await result.json();
       tracks = Array.isArray(data.musicList) ? data.musicList : [];
     }

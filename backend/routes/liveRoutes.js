@@ -78,7 +78,7 @@ async function buildQrDataUrl(text) {
   });
 }
 
-router.get('/live/state', (req, res) => {
+router.get('/state', (req, res) => {
   try {
     const state = readLiveState();
     return res.json({
@@ -98,7 +98,7 @@ router.get('/live/state', (req, res) => {
   }
 });
 
-router.post('/live/playback', (req, res) => {
+router.post('/playback', (req, res) => {
   try {
     const action = String(req.body?.action || '').trim();
     if (!['play', 'pause'].includes(action)) {
@@ -135,7 +135,7 @@ router.post('/live/playback', (req, res) => {
   }
 });
 
-router.post('/live/effect', (req, res) => {
+router.post('/effect', (req, res) => {
   try {
     const effectName = String(req.body?.effectName || '').trim();
     if (!effectName) {
@@ -155,7 +155,7 @@ router.post('/live/effect', (req, res) => {
   }
 });
 
-router.post('/live/camera-frame', (req, res) => {
+router.post('/camera-frame', (req, res) => {
   try {
     const imageData = String(req.body?.imageData || '').trim();
     if (!imageData.startsWith('data:image/')) {
@@ -183,7 +183,7 @@ router.post('/live/camera-frame', (req, res) => {
   }
 });
 
-router.get('/live/camera-stream', (req, res) => {
+router.get('/camera-stream', (req, res) => {
   try {
     res.writeHead(200, {
       'Content-Type': 'multipart/x-mixed-replace; boundary=frame',
@@ -229,7 +229,7 @@ router.get('/live/camera-stream', (req, res) => {
   }
 });
 
-router.get('/live/camera-frame', (req, res) => {
+router.get('/camera-frame', (req, res) => {
   try {
     const state = readLiveState();
     return res.json({
@@ -240,43 +240,6 @@ router.get('/live/camera-frame', (req, res) => {
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: `读取摄像头画面失败：${error.message}` });
-  }
-});
-
-router.get('/mobile/camera', (req, res) => {
-  return res.sendFile(mobileCameraHtmlPath);
-});
-
-router.get('/mobile/control', (req, res) => {
-  return res.sendFile(mobileControlHtmlPath);
-});
-
-router.get('/mobile/links', async (req, res) => {
-  try {
-    const localIp = getLocalIpAddress();
-    const baseUrl = `http://${localIp}:3000`;
-    const cameraUrl = `${baseUrl}/v1/mobile/camera`;
-    const controlUrl = `${baseUrl}/v1/mobile/control`;
-
-    const [cameraQr, controlQr] = await Promise.all([
-      buildQrDataUrl(cameraUrl),
-      buildQrDataUrl(controlUrl)
-    ]);
-
-    return res.json({
-      success: true,
-      baseUrl,
-      links: {
-        camera: cameraUrl,
-        control: controlUrl
-      },
-      qrs: {
-        camera: cameraQr,
-        control: controlQr
-      }
-    });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: `生成二维码失败：${error.message}` });
   }
 });
 

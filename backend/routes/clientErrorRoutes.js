@@ -2,7 +2,7 @@ const express = require('express');
 
 const router = express.Router();
 
-router.post('/client-error', (req, res) => {
+router.post('/', (req, res) => {
   const source = String(req.body?.source || 'frontend').trim();
   const message = String(req.body?.message || 'unknown error').trim();
   const stack = String(req.body?.stack || '').trim();

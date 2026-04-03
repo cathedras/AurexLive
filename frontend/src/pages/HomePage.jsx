@@ -107,7 +107,7 @@ function HomePage() {
 
   const fetchCurrentState = async () => {
     try {
-      const response = await fetch('/v1/show/current-state')
+      const response = await fetch('/v1/music/show/current-state')
       const result = await response.json()
 
       if (!result.success) {

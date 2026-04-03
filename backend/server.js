@@ -33,6 +33,7 @@ const musicRoutes = require('./routes/musicRoutes');
 const aiRoutes = require('./routes/aiRoutes');
 const settingsRoutes = require('./routes/settingsRoutes');
 const liveRoutes = require('./routes/liveRoutes');
+const mobileRoutes = require('./routes/mobileRoutes');
 const clientErrorRoutes = require('./routes/clientErrorRoutes');
 const recordingRoutes = require('./routes/recordingRoutes'); // 引入录音路由
 // debugRoutes removed for unit tests
@@ -99,14 +100,15 @@ if (SWAGGER_AUTO_EXPOSE) {
   logger.info('[Swagger] API docs are disabled. Set SWAGGER_AUTO_EXPOSE=1 to enable.');
 }
 
-app.use('/v1', uploadRoutes);
-app.use('/v1', fileRoutes);
-app.use('/v1', musicRoutes);
-app.use('/v1', aiRoutes);
-app.use('/v1', settingsRoutes);
-app.use('/v1', liveRoutes);
-app.use('/v1', clientErrorRoutes);
-app.use('/v1', recordingRoutes); // 注册录音路由
+app.use('/v1/upload', uploadRoutes);
+app.use('/v1/files', fileRoutes);
+app.use('/v1/music', musicRoutes);
+app.use('/v1/ai', aiRoutes);
+app.use('/v1/settings', settingsRoutes);
+app.use('/v1/live', liveRoutes);
+app.use('/v1/mobile', mobileRoutes);
+app.use('/v1/client-error', clientErrorRoutes);
+app.use('/v1/recording', recordingRoutes); // 注册录音路由
 
 // 7. 托管上传文件和前端静态文件
 app.use('/v1/uploads', express.static(uploadDir));

@@ -3,7 +3,7 @@ const openApiSpec = {
   info: {
     title: 'FileTransfer API',
     version: '1.0.0',
-    description: '演出中台后端接口文档，覆盖文件上传、节目单、AI 口播、实时播控与设置相关接口。'
+    description: '演出中台后端接口文档，覆盖文件上传、节目单、AI 口播、实时播控、WebSocket 协议与设置相关接口。'
   },
   servers: [
     {
@@ -18,9 +18,56 @@ const openApiSpec = {
     { name: 'AI', description: 'AI 口播与文本纠错' },
     { name: 'Settings', description: '用户设置' },
     { name: 'Live', description: '实时播控与摄像头画面' },
+    { name: 'WebSocket', description: '实时消息与音量监控命令' },
     { name: 'Mobile', description: '手机控制与扫码页面' },
     { name: 'Diagnostics', description: '前端错误回传' }
   ],
+  'x-websocket': {
+    endpoint: 'ws://localhost:3000/{client-type}',
+    description: 'WebSocket 连接路径即客户端类型，例如 recording、volume-:2。连接成功后服务端会先下发 clientId。',
+    clientToServer: [
+      {
+        type: 'identify',
+        description: '显式设置客户端类型，等同于连接路径类型。',
+        data: { clientType: 'recording' }
+      },
+      {
+        type: 'subscribe-volume',
+        description: '订阅某个录音文件的音量监控，并触发服务端启动音量采集。',
+        data: { fileName: 'recording-2026-03-28T11-00-00-000Z.flac', device: ':2' }
+      },
+      {
+        type: 'add-chunk',
+        description: '上传录音分块，当前主要用于旧录音链路兼容。',
+        data: { fileName: 'recording-2026-03-28T11-00-00-000Z.flac', chunkBase64: '...' }
+      },
+      {
+        type: 'get-status',
+        description: '查询某个录音任务的状态。',
+        data: { fileName: 'recording-2026-03-28T11-00-00-000Z.flac' }
+      },
+      {
+        type: 'echo',
+        description: '调试命令，服务端会原样回显 data。',
+        data: { hello: 'world' }
+      },
+      {
+        type: 'raw',
+        description: '调试命令，和 echo 一样走回显逻辑。',
+        data: { hello: 'world' }
+      }
+    ],
+    serverToClient: [
+      { type: 'clientId', description: '连接建立后下发的客户端标识。', data: 1 },
+      { type: 'identify-result', description: 'identify 命令结果。', success: true },
+      { type: 'subscribe-volume-result', description: 'subscribe-volume 命令结果。', success: true, fileName: 'recording-2026-03-28T11-00-00-000Z.flac' },
+      { type: 'monitor-start', description: '音量监控启动结果。', data: { success: true } },
+      { type: 'add-chunk-result', description: 'add-chunk 命令结果。', success: true },
+      { type: 'get-status-result', description: 'get-status 命令结果。', success: true, data: { type: 'object' } },
+      { type: 'echo', description: 'echo/raw 的回显消息。', success: true, data: { hello: 'world' } },
+      { type: 'volume', description: '音量推送事件，通常是 0-100 的整数。', data: { fileName: 'recording-2026-03-28T11-00-00-000Z.flac', volume: 42, timestamp: 1679999940000 } }
+    ]
+  },
   components: {
     schemas: {
       SuccessFlag: {
@@ -197,6 +244,106 @@ const openApiSpec = {
             volume: { type: 'integer', example: 42 },
             timestamp: { type: 'integer', example: 1679999940000 }
           }
+        },
+        RecordingListItem: {
+          type: 'object',
+          properties: {
+            filename: { type: 'string', example: 'recording-2026-03-28T11-00-00-000Z.flac' },
+            size: { type: 'integer', example: 12345678 },
+            createdAt: { type: 'string', format: 'date-time' },
+            url: { type: 'string', example: '/v1/recordings/recording-2026-03-28T11-00-00-000Z.flac' }
+          }
+        },
+        RecordingListResponse: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean', example: true },
+            data: {
+              type: 'array',
+              items: { $ref: '#/components/schemas/RecordingListItem' }
+            }
+          }
+        },
+        DeviceListResponse: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean', example: true },
+            platform: { type: 'string', example: 'darwin' },
+            raw: { type: 'string', example: 'AVFoundation audio devices:' }
+          }
+        },
+        ConversionJobRequest: {
+          type: 'object',
+          properties: {
+            fileName: { type: 'string', example: 'recording-2026-03-28T11-00-00-000Z.flac' },
+            inputUrl: { type: 'string', example: 'https://example.com/input.mp3' },
+            outFileName: { type: 'string', example: 'output.mp3' },
+            ffmpegArgs: {
+              type: 'array',
+              items: { type: 'string' },
+              example: ['-i', 'input.mp3', '-c:a', 'aac', '-b:a', '128k']
+            }
+          }
+        },
+        ConversionJobResponse: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean', example: true },
+            jobId: { type: 'integer', example: 12 }
+          }
+        },
+        ConversionJob: {
+          type: 'object',
+          properties: {
+            id: { type: 'integer', example: 12 },
+            status: { type: 'string', example: 'queued' },
+            createdAt: { type: 'integer', example: 1679999940000 },
+            startedAt: { type: 'integer', nullable: true, example: 1679999941000 },
+            completedAt: { type: 'integer', nullable: true, example: 1679999950000 },
+            cancelledAt: { type: 'integer', nullable: true, example: 1679999945000 },
+            progress: { type: 'number', nullable: true, example: 42.5 },
+            result: { type: 'object', nullable: true },
+            error: { type: 'string', nullable: true },
+            stderr: { type: 'string', nullable: true }
+          }
+        },
+        WebSocketCommand: {
+          type: 'object',
+          properties: {
+            type: {
+              type: 'string',
+              enum: ['identify', 'subscribe-volume', 'add-chunk', 'get-status', 'echo', 'raw']
+            },
+            data: {
+              oneOf: [
+                { type: 'object' },
+                { type: 'string' },
+                { type: 'number' },
+                { type: 'boolean' },
+                { type: 'null' }
+              ]
+            }
+          }
+        },
+        WebSocketEvent: {
+          type: 'object',
+          properties: {
+            type: {
+              type: 'string',
+              enum: ['clientId', 'identify-result', 'subscribe-volume-result', 'monitor-start', 'add-chunk-result', 'get-status-result', 'echo', 'volume']
+            },
+            success: { type: 'boolean', nullable: true },
+            fileName: { type: 'string', nullable: true },
+            data: {
+              oneOf: [
+                { type: 'object' },
+                { type: 'string' },
+                { type: 'number' },
+                { type: 'boolean' },
+                { type: 'null' }
+              ]
+            }
+          }
         }
     }
   },
@@ -271,7 +418,7 @@ const openApiSpec = {
         }
       }
     },
-    '/v1/musiclist': {
+    '/v1/music/musiclist': {
       get: {
         tags: ['Music'],
         summary: '获取当前节目单',
@@ -287,7 +434,51 @@ const openApiSpec = {
         }
       }
     },
-    '/v1/musiclist/save': {
+    '/v1/music/musiclist/runtime-track': {
+      post: {
+        tags: ['Music'],
+        summary: '新增临时节目到节目单',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['performer', 'programName'],
+                properties: {
+                  performer: { type: 'string', example: '张三' },
+                  programName: { type: 'string', example: '独唱《最初的梦想》' },
+                  hostScript: { type: 'string', example: '感谢大家的到来。' },
+                  sourceTrack: { $ref: '#/components/schemas/Track' }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          200: {
+            description: '新增成功',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    message: { type: 'string', example: '节目已加入临时列表' },
+                    track: { $ref: '#/components/schemas/Track' },
+                    musicList: {
+                      type: 'array',
+                      items: { $ref: '#/components/schemas/Track' }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/v1/music/musiclist/save': {
       post: {
         tags: ['Music'],
         summary: '保存节目单或演出记录',
@@ -449,35 +640,7 @@ const openApiSpec = {
         }
       }
     },
-    '/v1/start-recording': {
-      post: {
-        tags: ['Live'],
-        summary: '开始本地内存记录（关联 clientId）',
-        requestBody: {
-          required: true,
-          content: {
-            'application/json': {
-              schema: {
-                type: 'object',
-                required: ['clientId'],
-                properties: {
-                  clientId: { type: 'string', example: '1' }
-                }
-              }
-            }
-          }
-        },
-        responses: {
-          200: {
-            description: '录音已开始（内存/分块模式）',
-            content: {
-              'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, data: { $ref: '#/components/schemas/RecordingInfo' } } } }
-            }
-          }
-        }
-      }
-    },
-    '/v1/start-recording-backend': {
+    '/v1/recording/start-recording-backend': {
       post: {
         tags: ['Live'],
         summary: '后端启动 ffmpeg 录音（可传 device 或 自定义 ffmpegArgs）',
@@ -509,7 +672,7 @@ const openApiSpec = {
         }
       }
     },
-    '/v1/stop-recording-backend': {
+    '/v1/recording/stop-recording-backend': {
       post: {
         tags: ['Live'],
         summary: '停止后端录音（停止 ffmpeg 或 将内存 chunk 写盘）',
@@ -526,7 +689,7 @@ const openApiSpec = {
         }
       }
     },
-    '/v1/recording-status': {
+    '/v1/recording/recording-status': {
       get: {
         tags: ['Live'],
         summary: '查询录音状态（含最新音量）',
@@ -535,6 +698,118 @@ const openApiSpec = {
         ],
         responses: {
           200: { description: '状态信息', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, data: { type: 'object' } } } } } }
+        }
+      }
+    },
+    '/v1/recording/convert': {
+      post: {
+        tags: ['Live'],
+        summary: '转码任务入列（待开发）',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/ConversionJobRequest' }
+            }
+          }
+        },
+        responses: {
+          200: {
+            description: '任务已进入队列',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ConversionJobResponse' }
+              }
+            }
+          },
+          400: { description: '参数缺失', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
+          500: { description: '入列失败', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        }
+      }
+    },
+    '/v1/recording/jobs/{id}': {
+      get: {
+        tags: ['Live'],
+        summary: '查询转码队列任务状态（待开发）',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' }, description: '任务 ID' }
+        ],
+        responses: {
+          200: {
+            description: '任务状态',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    job: { $ref: '#/components/schemas/ConversionJob' }
+                  }
+                }
+              }
+            }
+          },
+          404: { description: '任务不存在', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        }
+      }
+    },
+    '/v1/recording/jobs/{id}/cancel': {
+      post: {
+        tags: ['Live'],
+        summary: '取消转码队列任务（待开发）',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'integer' }, description: '任务 ID' }
+        ],
+        responses: {
+          200: { description: '取消成功', content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessFlag' } } } },
+          400: { description: '无法取消或任务已结束', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
+          500: { description: '取消失败', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        }
+      }
+    },
+    '/v1/recording/list-recordings': {
+      get: {
+        tags: ['Live'],
+        summary: '获取录音文件列表',
+        responses: {
+          200: {
+            description: '读取成功',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/RecordingListResponse' }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/v1/recording/list-devices': {
+      get: {
+        tags: ['Live'],
+        summary: '列出可用音频设备',
+        responses: {
+          200: {
+            description: '读取成功',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/DeviceListResponse' }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/v1/recording/{filename}': {
+      delete: {
+        tags: ['Live'],
+        summary: '删除录音文件',
+        parameters: [
+          { name: 'filename', in: 'path', required: true, schema: { type: 'string' }, description: '录音文件名' }
+        ],
+        responses: {
+          200: { description: '删除成功', content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessFlag' } } } },
+          400: { description: '文件路径无效', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
+          500: { description: '删除失败', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
         }
       }
     },
@@ -879,7 +1154,7 @@ const openApiSpec = {
         }
       }
     },
-    '/v1/musiclist/export-pdf': {
+    '/v1/music/musiclist/export-pdf': {
       post: {
         tags: ['Music'],
         summary: '导出节目单 PDF',

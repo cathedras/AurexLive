@@ -5,7 +5,7 @@ const { getUploadedFiles } = require('../utils/fileUtils');
 
 const router = express.Router();
 
-router.get('/files', (req, res) => {
+router.get('/', (req, res) => {
   try {
     const files = getUploadedFiles(uploadDir);
     return res.json({ success: true, files });

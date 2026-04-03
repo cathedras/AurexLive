@@ -1,6 +1,6 @@
 import wsClient from '../wsClientService.js';
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/v1';
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/v1/recording';
 
 export const getRecordingStatus = async (fileName) => {
   try {
@@ -44,7 +44,7 @@ export const listRecordingDevices = async () => {
 
 export const deleteRecording = async (filename) => {
   try {
-    const response = await fetch(`${BASE_URL}/recording/${filename}`, {
+    const response = await fetch(`${BASE_URL}/${filename}`, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
     });

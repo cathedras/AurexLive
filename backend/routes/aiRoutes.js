@@ -121,7 +121,7 @@ async function refineSpeechTextByOpenAICompatibleApi({ text, field }) {
   return content || text;
 }
 
-router.post('/ai/host-script-suggestions', async (req, res) => {
+router.post('/host-script-suggestions', async (req, res) => {
   try {
     const performer = String(req.body?.performer || '').trim();
     const programName = String(req.body?.programName || '').trim();
@@ -149,7 +149,7 @@ router.post('/ai/host-script-suggestions', async (req, res) => {
   }
 });
 
-router.post('/ai/speech-refine-text', async (req, res) => {
+router.post('/speech-refine-text', async (req, res) => {
   try {
     const text = String(req.body?.text || '').trim();
     const field = String(req.body?.field || 'general').trim();

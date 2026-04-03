@@ -593,6 +593,41 @@ class RecordingService {
     }
   }
 
+  // 获取录音状态
+  getStatus(fileName) {
+    if (fileName) {
+      const recordingInfo = this.activeRecordings.get(fileName);
+      if (!recordingInfo) {
+        return {
+          fileName,
+          isRecording: false,
+          found: false
+        };
+      }
+
+      return {
+        fileName,
+        isRecording: Boolean(recordingInfo.isRecording),
+        found: true,
+        startTime: recordingInfo.startTime,
+        clientId: recordingInfo.clientId,
+        volumeData: recordingInfo.volumeData || [],
+        chunkCount: Array.isArray(recordingInfo.chunks) ? recordingInfo.chunks.length : 0,
+        filePath: recordingInfo.filePath
+      };
+    }
+
+    return Array.from(this.activeRecordings.values()).map((recordingInfo) => ({
+      fileName: recordingInfo.fileName,
+      isRecording: Boolean(recordingInfo.isRecording),
+      startTime: recordingInfo.startTime,
+      clientId: recordingInfo.clientId,
+      volumeData: recordingInfo.volumeData || [],
+      chunkCount: Array.isArray(recordingInfo.chunks) ? recordingInfo.chunks.length : 0,
+      filePath: recordingInfo.filePath
+    }));
+  }
+
   // 删除录音文件
   deleteRecording(fileName) {
     const filePath = path.join(recordingDir, fileName);

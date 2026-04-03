@@ -47,6 +47,17 @@ router.post('/stop-recording-backend', (req, res) => {
   }
 });
 
+// 查询录音状态
+router.get('/recording-status', (req, res) => {
+  try {
+    const fileName = String(req.query?.fileName || '').trim();
+    const data = recordingService.getStatus(fileName || undefined);
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, message: '查询录音状态失败', error: error.message });
+  }
+});
+
 // 待开发：前端当前未调用；用于转码任务入列
 router.post('/convert', (req, res) => {
   try {
@@ -141,7 +152,7 @@ router.get('/list-devices', (req, res) => {
 });
 
 // 删除录音文件
-router.delete('/recording/:filename', (req, res) => {
+router.delete('/:filename', (req, res) => {
   try {
     const filename = req.params.filename;
     

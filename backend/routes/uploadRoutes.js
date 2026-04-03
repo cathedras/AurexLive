@@ -24,7 +24,7 @@ const upload = multer({
   limits: { fileSize: 100 * 1024 * 1024 }
 });
 
-router.post('/upload', upload.single('file'), (req, res) => {
+router.post('/', upload.single('file'), (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, message: '请选择要上传的文件' });

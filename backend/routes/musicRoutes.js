@@ -223,7 +223,7 @@ router.post('/musiclist/save', (req, res) => {
 
 // ==================== Audio File APIs ====================
 
-router.get('/music/file/:token', (req, res) => {
+router.get('/file/:token', (req, res) => {
   try {
     const fileName = decodeMusicFileToken(req.params?.token);
     if (!fileName) {
@@ -250,7 +250,7 @@ router.get('/music/file/:token', (req, res) => {
   }
 });
 
-router.post('/music/file-url', (req, res) => {
+router.post('/file-url', (req, res) => {
   try {
     const fileName = String(req.body?.fileName || '').trim();
     if (!fileName) {
@@ -285,7 +285,7 @@ router.post('/music/file-url', (req, res) => {
   }
 });
 
-router.post('/music/preview-source', (req, res) => {
+router.post('/preview-source', (req, res) => {
   try {
     const fileName = String(req.body?.fileName || '').trim();
     if (!fileName) {
@@ -323,14 +323,14 @@ router.post('/music/preview-source', (req, res) => {
 
 // ==================== Backend Playback Control APIs ====================
 
-router.get('/music/backend-state', (req, res) => {
+router.get('/backend-state', (req, res) => {
   return res.json({
     success: true,
     state: musicPlaybackService.getPublicState()
   });
 });
 
-router.get('/music/backend-progress', (req, res) => {
+router.get('/backend-progress', (req, res) => {
   const state = musicPlaybackService.getPublicState();
   return res.json({
     success: true,
@@ -342,7 +342,7 @@ router.get('/music/backend-progress', (req, res) => {
   });
 });
 
-router.get('/music/backend-progress/stream', (req, res) => {
+router.get('/backend-progress/stream', (req, res) => {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -371,7 +371,7 @@ router.get('/music/backend-progress/stream', (req, res) => {
   });
 });
 
-router.post('/music/backend-play', async (req, res) => {
+router.post('/backend-play', async (req, res) => {
   try {
     const savedName = String(req.body?.fileName || '').trim();
     if (!savedName) {
@@ -410,7 +410,7 @@ router.post('/music/backend-play', async (req, res) => {
   }
 });
 
-router.post('/music/backend-control', async (req, res) => {
+router.post('/backend-control', async (req, res) => {
   try {
     const action = String(req.body?.action || '').trim();
     let state = null;
@@ -440,7 +440,7 @@ router.post('/music/backend-control', async (req, res) => {
   }
 });
 
-router.post('/music/backend-volume', async (req, res) => {
+router.post('/backend-volume', async (req, res) => {
   try {
     const volume = Number(req.body?.volume);
     if (!Number.isFinite(volume)) {

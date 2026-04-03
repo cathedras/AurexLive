@@ -78,7 +78,7 @@ function writeSettings(nextSettings) {
   return output;
 }
 
-router.get('/settings', (req, res) => {
+router.get('/', (req, res) => {
   try {
     const settings = readSettings();
     return res.json({
@@ -93,7 +93,7 @@ router.get('/settings', (req, res) => {
   }
 });
 
-router.post('/settings', (req, res) => {
+router.post('/', (req, res) => {
   try {
     const nextSettings = mergeSettings(req.body?.settings || {});
     const settings = writeSettings(nextSettings);
