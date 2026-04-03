@@ -7,6 +7,7 @@ const wsClientService = require('./services/wsClientService');
 const { createLogger } = require('./middleware/logger');
 
 const logger = createLogger({ source: 'initWebSocket' });
+const VOLUME_MONITOR_START_DELAY_MS = 0;
 
 module.exports = function initWebSocket(server) {
   const wss = new WebSocket.Server({ server });
@@ -107,10 +108,28 @@ module.exports = function initWebSocket(server) {
             safeSend(ws, { type: 'subscribe-volume-result', success: true, fileName });
             logger.info(`client ${clientId} subscribed to volume for ${fileName}`, 'message');
             try {
-                const monitorDevice = device || (client && client.typeSub) || null; // allow client to request specific device via message or type suffix
-              const res = recordingService.startVolumeMonitor(clientId, monitorDevice);
-              safeSend(ws, { type: 'monitor-start', data: res });
-              logger.info(`started volume monitor for client ${clientId} device=${monitorDevice} res=${JSON.stringify(res)}`, 'message');
+              const monitorDevice = device || (client && client.typeSub) || null; // allow client to request specific device via message or type suffix
+              const startTimer = setTimeout(() => {
+                const currentClient = wsClientService.clients.get(clientId);
+                if (!currentClient || !currentClient.ws || currentClient.ws.readyState !== WebSocket.OPEN) {
+                  return;
+                }
+
+                try {
+                  const res = recordingService.startVolumeMonitor(clientId, monitorDevice);
+                  safeSend(ws, { type: 'monitor-start', data: res });
+                  logger.info(`started volume monitor for client ${clientId} device=${monitorDevice} res=${JSON.stringify(res)}`, 'message');
+                } catch (e) {
+                  logger.warning(`failed to start volume monitor for client ${clientId}: ${e && e.message ? e.message : e}`, 'message');
+                }
+              }, VOLUME_MONITOR_START_DELAY_MS);
+
+              if (client) {
+                if (client.pendingVolumeMonitorTimer) {
+                  clearTimeout(client.pendingVolumeMonitorTimer);
+                }
+                client.pendingVolumeMonitorTimer = startTimer;
+              }
             } catch (e) {
               logger.warning(`failed to start volume monitor for client ${clientId}: ${e && e.message ? e.message : e}`, 'message');
             }
@@ -119,20 +138,6 @@ module.exports = function initWebSocket(server) {
             safeSend(ws, { type: 'subscribe-volume-result', success: false, error: 'missing_fileName' });
           }
           return;
-        } else if (type === 'add-chunk') {
-          // data: { fileName, chunkBase64 }
-          const { fileName, chunkBase64 } = data || {};
-          if (fileName && chunkBase64) {
-            const buf = Buffer.from(chunkBase64, 'base64');
-            recordingService.addRecordingChunk(fileName, buf);
-            safeSend(ws, { type: 'add-chunk-result', success: true });
-          } else {
-            safeSend(ws, { type: 'add-chunk-result', success: false, error: 'missing_params' });
-          }
-        } else if (type === 'get-status') {
-          const { fileName } = data || {};
-          const status = recordingService.getStatus(fileName);
-          safeSend(ws, { type: 'get-status-result', success: true, data: status });
         } else if (type === 'echo' || type === 'raw') {
           // Demo: echo back the received data to the client
           safeSend(ws, { type: 'echo', success: true, data });
@@ -144,6 +149,11 @@ module.exports = function initWebSocket(server) {
     ws.on('close', (code, reason) => {
       logger.info(`client ${clientId} disconnected code=${code} reason=${reason && reason.toString ? reason.toString() : reason}`, 'close')
       try {
+        const client = wsClientService.clients.get(clientId);
+        if (client && client.pendingVolumeMonitorTimer) {
+          clearTimeout(client.pendingVolumeMonitorTimer);
+          client.pendingVolumeMonitorTimer = null;
+        }
         recordingService.stopVolumeMonitor(clientId);
       } catch (e) {}
     })

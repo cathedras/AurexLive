@@ -1,10 +1,10 @@
-import { Download, Headphones, Pause, Play, Trash2 } from 'lucide-react'
+import { Copy, Headphones, Pause, Play, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { useFloatingAudioPlayer } from '../component/FloatingAudioPlayer'
 import Modal from '../component/Modal'
-import { deleteRecording, getRecordingList, startRecordingBackend, stopRecordingBackend } from '../services/musicPlay'
+import { deleteRecording, getRecordingList, startRecordingBackend, stopRecordingBackend, useRecording } from '../services/musicPlay'
 import wsClientService from '../services/wsClientService'
 
 const RecordingPage = () => {
@@ -18,11 +18,15 @@ const RecordingPage = () => {
   const [currentRecordingFileName, setCurrentRecordingFileName] = useState(null);
   const [clientId, setClientId] = useState(null);
   const [wsConnected, setWsConnected] = useState(false);
+  const [enableVolumeWs, setEnableVolumeWs] = useState(false);
   const [devices, setDevices] = useState([]);
   const [selectedDevice, setSelectedDevice] = useState(null);
   const [ws, setWs] = useState(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [useDialogOpen, setUseDialogOpen] = useState(false);
+  const [useTarget, setUseTarget] = useState(null);
+  const [useNewName, setUseNewName] = useState('');
   const timerRef = useRef(null);
   const audioRef = useRef(null);
   const canvasRef = useRef(null);
@@ -30,6 +34,64 @@ const RecordingPage = () => {
   const animationRef = useRef(null);
   const volumeTargetRef = useRef(0);
   const volumeDisplayRef = useRef(0);
+
+  const resetVolumeDisplay = () => {
+    volumeTargetRef.current = 0;
+    volumeDisplayRef.current = 0;
+    if (volumeValueRef.current) {
+      volumeValueRef.current.textContent = '当前音量: 0%';
+    }
+  };
+
+  const closeVolumeSocket = () => {
+    if (ws && ws.close) {
+      try { ws.close(); } catch (e) {}
+    }
+    setWs(null);
+    setWsConnected(false);
+    setClientId(null);
+    resetVolumeDisplay();
+  };
+
+  const connectVolumeSocket = async () => {
+    const socket = await wsClientService.connect(`volume-${selectedDevice}`,
+      (data) => {
+        if (typeof data === 'number') {
+          volumeTargetRef.current = Math.max(0, Math.min(100, Number(data) || 0));
+        } else if (data && data.volume !== undefined) {
+          volumeTargetRef.current = Math.max(0, Math.min(100, Number(data.volume) || 0));
+        }
+      },
+      () => {
+        setWsConnected(true);
+        console.log('[WS] connected');
+      },
+      () => {
+        setWsConnected(false);
+        console.log('[WS] disconnected');
+      },
+      (msg) => {
+        if (msg?.type === 'clientId' && msg.data) {
+          setClientId(msg.data);
+        }
+        console.log('[WS] message:', msg);
+      }
+    );
+
+    setWs(socket);
+    return socket;
+  };
+
+  const subscribeVolumeSocket = (socket, fileName, deviceArg) => {
+    if (!socket || !fileName) {
+      return;
+    }
+
+    wsClientService.sendJsonAsText(socket, {
+      type: 'subscribe-volume',
+      data: { fileName, device: deviceArg }
+    });
+  };
 
   // 检查浏览器是否支持录音功能
   const checkSupport = () => {
@@ -218,33 +280,12 @@ const RecordingPage = () => {
     let socket = null;
 
     try {
-      // 第1步：先连接 WebSocket（确保能收到音量数据）
-      socket = await wsClientService.connect(`volume-${selectedDevice}`,
-        (data) => {
-          // 处理音量数据
-          if (typeof data === 'number') {
-            volumeTargetRef.current = Math.max(0, Math.min(100, Number(data) || 0));
-          } else if (data && data.volume !== undefined) {
-            volumeTargetRef.current = Math.max(0, Math.min(100, Number(data.volume) || 0));
-          }
-        },
-        () => {
-          setWsConnected(true);
-          console.log('[WS] connected');
-        },
-        () => {
-          setWsConnected(false);
-          console.log('[WS] disconnected');
-        },
-        (msg) => {
-          // 处理通用消息，如 clientId
-          if (msg?.type === 'clientId' && msg.data) {
-            setClientId(msg.data);
-          }
-          console.log('[WS] message:', msg);
-        }
-      );
-      setWs(socket);
+      if (enableVolumeWs) {
+        // 第1步：按需连接 WebSocket（仅勾选时显示音量）
+        socket = await connectVolumeSocket();
+      } else {
+        closeVolumeSocket();
+      }
 
       // 第2步：启动后端录音（通过 HTTP）
       const deviceArg = selectedDevice || null;
@@ -263,11 +304,10 @@ const RecordingPage = () => {
       setIsRecording(true);
       setRecordingTime(0);
 
-      // 第4步：发送订阅命令，让服务端知道这个客户端要接收该录音的音量
-      wsClientService.sendJsonAsText(socket, {
-        type: 'subscribe-volume',
-        data: { fileName, device: deviceArg }
-      });
+      if (enableVolumeWs && socket) {
+        // 第4步：发送订阅命令，让服务端知道这个客户端要接收该录音的音量
+        subscribeVolumeSocket(socket, fileName, deviceArg);
+      }
 
       // 第5步：启动计时器
       timerRef.current = setInterval(() => {
@@ -298,18 +338,7 @@ const RecordingPage = () => {
         console.error('stop backend failed', e);
       }
       setIsRecording(false);
-      volumeTargetRef.current = 0;
-      volumeDisplayRef.current = 0;
-      if (volumeValueRef.current) {
-        volumeValueRef.current.textContent = '当前音量: 0%';
-      }
-
-      // close SSE
-      if (ws && ws.close) {
-        try { ws.close(); } catch (e) {}
-      }
-      setWs(null);
-      setWsConnected(false);
+      closeVolumeSocket();
 
       if (timerRef.current) {
         clearInterval(timerRef.current);
@@ -326,6 +355,15 @@ const RecordingPage = () => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const formatFileSize = (bytes) => {
+    const sizeInBytes = Number(bytes || 0)
+    if (sizeInBytes < 1000 * 1024) {
+      return `${(sizeInBytes / 1024).toFixed(1)} KB`
+    }
+
+    return `${(sizeInBytes / 1024 / 1024).toFixed(2)} MB`
   };
 
   // 删除录音
@@ -347,6 +385,46 @@ const RecordingPage = () => {
     setDeleteDialogOpen(true);
   };
 
+  const openUseRecordingDialog = (filename) => {
+    // default name: strip leading timestamp-uid- if present
+    const defaultName = String(filename || '').replace(/^\d+-\d+-/, '');
+    setUseTarget(filename);
+    setUseNewName(defaultName);
+    setUseDialogOpen(true);
+  };
+
+  const handleConfirmUse = async () => {
+    if (!useTarget) return;
+    setUseDialogOpen(false);
+    try {
+      await useRecording(useTarget, useNewName);
+      // refresh recordings list after copying
+      await loadRecordings();
+    } catch (err) {
+      setError('使用录音失败: ' + (err && err.message ? err.message : err));
+    } finally {
+      setUseTarget(null);
+    }
+  };
+
+  const handleCancelUse = () => {
+    setUseDialogOpen(false);
+    setUseTarget(null);
+  };
+
+  const clearAllRecordings = async () => {
+    try {
+      setLoading(true);
+      const names = recordings.map(r => r.filename).filter(Boolean);
+      await Promise.all(names.map(n => deleteRecording(n).catch(e => null)));
+      await loadRecordings();
+    } catch (err) {
+      setError('清空录音失败: ' + (err && err.message ? err.message : err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleConfirmDelete = async () => {
     if (!deleteTarget) return;
     setDeleteDialogOpen(false);
@@ -360,6 +438,26 @@ const RecordingPage = () => {
   const handleCancelDelete = () => {
     setDeleteDialogOpen(false);
     setDeleteTarget(null);
+  };
+
+  const handleToggleVolumeWs = async (event) => {
+    const nextEnabled = event.target.checked;
+    setEnableVolumeWs(nextEnabled);
+
+    if (!nextEnabled) {
+      closeVolumeSocket();
+      return;
+    }
+
+    if (isRecording && currentRecordingFileName) {
+      try {
+        const socket = await connectVolumeSocket();
+        subscribeVolumeSocket(socket, currentRecordingFileName, selectedDevice || null);
+      } catch (err) {
+        setEnableVolumeWs(false);
+        setError(`音量 WS 连接失败: ${err.message}`);
+      }
+    }
   };
 
   // 播放录音
@@ -435,17 +533,25 @@ const RecordingPage = () => {
               ))}
             </select>
           </div>
+          <label style={{ marginLeft: 12, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+            <input type="checkbox" checked={enableVolumeWs} onChange={handleToggleVolumeWs} />
+            启用音量 WS（勾选后显示音量）
+          </label>
           <div style={{ marginLeft: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ fontSize: 12, color: wsConnected ? '#0a0' : '#a00' }}>
-              WS: {wsConnected ? '已连接' : '未连接'}
-            </div>
-            {clientId && <div style={{ fontSize: 12 }}>clientId: {clientId}</div>}
+            {enableVolumeWs && (
+              <>
+                <div style={{ fontSize: 12, color: wsConnected ? '#0a0' : '#a00' }}>
+                  WS: {wsConnected ? '已连接' : '未连接'}
+                </div>
+                {clientId && <div style={{ fontSize: 12 }}>clientId: {clientId}</div>}
+              </>
+            )}
           </div>
           {isRecording && (
             <span className="recording-timer">录制时间: {formatTime(recordingTime)}</span>
           )}
         </div>
-        {isRecording && (
+        {isRecording && enableVolumeWs && (
           <div className="volume-visualizer-card">
             <canvas
               ref={canvasRef}
@@ -463,20 +569,36 @@ const RecordingPage = () => {
       {recordings.length > 0 && (
         <div className="recording-list-card home-panel">
           <h4 className="recording-list-title">录音列表</h4>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <div style={{ fontSize: 14 }} />
+            <div>
+              <button
+                className="row-icon-btn row-icon-btn-delete"
+                onClick={clearAllRecordings}
+                disabled={loading || recordings.length===0}
+                aria-label="清空录音"
+                title="清空录音"
+              >
+                <span className="row-icon-btn-graphic" aria-hidden>
+                  <Trash2 className="row-action-icon" />
+                </span>
+              </button>
+            </div>
+          </div>
           <div className="recording-list-ul">
             {recordings.map((rec, index) => (
               <div key={index} className="recording-item-card">
                 <div className="recording-info">
                   <span className="recording-name">{rec.filename}</span>
                   <span className="recording-date">{new Date(rec.createdAt).toLocaleString()}</span>
-                  <span className="recording-size">大小: {(rec.size / 1024 / 1024).toFixed(2)} MB</span>
+                  <span className="recording-size">大小: {formatFileSize(rec.size)}</span>
                 </div>
                 <div className="recording-actions">
-                  <a href={rec.url} className={`row-icon-btn row-icon-btn-create`} download aria-label={`下载 ${rec.filename}`}>
+                  <button className="row-icon-btn row-icon-btn-use" onClick={() => openUseRecordingDialog(rec.filename)} aria-label={`使用 ${rec.filename}`} title={`使用 ${rec.filename}`}>
                     <span className="row-icon-btn-graphic" aria-hidden>
-                      <Download className="row-action-icon" />
+                      <Copy className="row-action-icon" />
                     </span>
-                  </a>
+                  </button>
                   <button className={`row-icon-btn row-icon-btn-preview`} onClick={() => playRecording(rec)} aria-label={`试听 ${rec.filename}`}>
                     <span className="row-icon-btn-graphic" aria-hidden>
                       <Headphones className="row-action-icon" />
@@ -493,6 +615,18 @@ const RecordingPage = () => {
           </div>
         </div>
       )}
+      
+      <Modal open={useDialogOpen} title="使用并重命名录音" onClose={handleCancelUse} footer={
+        <>
+          <button className="row-icon-btn" onClick={handleCancelUse}>取消</button>
+          <button className="row-icon-btn" onClick={handleConfirmUse}>确定</button>
+        </>
+      }>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <label>重命名为：</label>
+          <input value={useNewName} onChange={(e) => setUseNewName(e.target.value)} />
+        </div>
+      </Modal>
     </div>
   );
 };

@@ -36,6 +36,7 @@ const liveRoutes = require('./routes/liveRoutes');
 const mobileRoutes = require('./routes/mobileRoutes');
 const clientErrorRoutes = require('./routes/clientErrorRoutes');
 const recordingRoutes = require('./routes/recordingRoutes'); // 引入录音路由
+const recordingFilesRoutes = require('./routes/recordingFilesRoutes');
 // debugRoutes removed for unit tests
 const musicPlaybackService = require('./services/musicPlaybackService');
 const requestLogger = require('./middleware/requestLogger');
@@ -113,7 +114,7 @@ app.use('/v1/recording', recordingRoutes); // 注册录音路由
 // 7. 托管上传文件和前端静态文件
 app.use('/v1/uploads', express.static(uploadDir));
 app.use('/v1/show_record', express.static(showRecordDir));
-app.use('/v1/recordings', express.static(recordingDir)); // 托管录音文件
+app.use('/v1/recordings', recordingFilesRoutes); // 托管录音文件（安全处理 Range）
 
 const hasReactDist = fs.existsSync(reactDistDir);
 

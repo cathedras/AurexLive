@@ -58,6 +58,15 @@ export const stopRecordingBackend = async (fileName) => {
   }
 }
 
+export const useRecording = async (filename, newName) => {
+  try {
+    return await apiPost(`${BASE_URL}/use-recording`, { filename, newName })
+  } catch (error) {
+    console.error('使用录音失败:', error)
+    throw error
+  }
+}
+
 // ------------------------------
 // WebSocket helpers for recording (uses shared wsClient)
 // ------------------------------

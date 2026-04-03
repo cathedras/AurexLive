@@ -130,6 +130,46 @@ class RecordingService {
     this.monitorProcs = new Map();
   }
 
+  waitForProcessClose(proc, timeoutMs = 5000) {
+    return new Promise((resolve) => {
+      if (!proc) {
+        resolve();
+        return;
+      }
+
+      let settled = false;
+      let timeoutHandle = null;
+
+      const finish = () => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        if (timeoutHandle) {
+          clearTimeout(timeoutHandle);
+        }
+        resolve();
+      };
+
+      proc.once('close', finish);
+      proc.once('error', finish);
+
+      timeoutHandle = setTimeout(() => {
+        try {
+          if (proc.stdin && !proc.stdin.destroyed) {
+            proc.stdin.write('q');
+          }
+        } catch (e) { }
+
+        try {
+          proc.kill('SIGKILL');
+        } catch (e) { }
+
+        setTimeout(finish, 500);
+      }, timeoutMs);
+    });
+  }
+
   // 广播音量数据给所有客户端（使用 wsClientService 转发，并触发本地事件）
   broadcastVolume(volumeData) {
     try {
@@ -140,7 +180,7 @@ class RecordingService {
   // 开始录音
   startRecording(clientId) {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const fileName = `recording-${timestamp}.webm`;
+    const fileName = `recording-${timestamp}.flac`;
     const filePath = path.join(recordingDir, fileName);
 
     if (!fs.existsSync(recordingDir)) {
@@ -170,10 +210,10 @@ class RecordingService {
   // params:
   // - clientId: associated client
   // - ffmpegArgs: array of args to pass to ffmpeg (if omitted a sensible default will be used)
-  // - outFileName: optional filename (defaults to recording-<timestamp>.webm)
+  // - outFileName: optional filename (defaults to recording-<timestamp>.flac)
   startRecordingWithFfmpeg(clientId, ffmpegArgsOrDevice, outFileName) {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const fileName = outFileName || `recording-${timestamp}.mp4`;
+    const fileName = outFileName || `recording-${timestamp}.flac`;
     const filePath = path.join(recordingDir, fileName);
 
     if (!fs.existsSync(recordingDir)) {
@@ -233,7 +273,7 @@ class RecordingService {
         spawnArgs = [
           '-f', 'avfoundation', '-i', macDevice,
           '-vn',
-          '-c:a', 'aac', '-b:a', '128k',
+          '-c:a', 'flac', '-compression_level', '12',
           '-y', filePath
         ];
       } else if (platform === 'win32') {
@@ -241,7 +281,7 @@ class RecordingService {
         spawnArgs = [
           '-f', 'dshow', '-i', winDev,
           '-vn',
-          '-c:a', 'aac', '-b:a', '128k',
+          '-c:a', 'flac', '-compression_level', '12',
           '-y', filePath
         ];
       } else {
@@ -250,7 +290,7 @@ class RecordingService {
         spawnArgs = [
           '-f', 'alsa', '-i', linuxDev,
           '-vn',
-          '-c:a', 'aac', '-b:a', '128k',
+          '-c:a', 'flac', '-compression_level', '12',
           '-y', filePath
         ];
       }
@@ -267,35 +307,9 @@ class RecordingService {
       throw spawnErr;
     }
     logger.info(`ffmpeg started with PID ${ff.Errorno ? ff.Errorno : ff.pid}`, 'startRecordingWithFfmpeg');
-    // Parse stderr for astats/ametadata output to extract RMS level (dB) and broadcast volume
-    ff.stderr.on('data', (chunk) => {
-      try {
-        const text = chunk.toString();
-        const m1 = text.match(/lavfi\.astats\.Overall\.RMS_level\s*=?\s*([-\d.]+)\b/);
-        let dbValue = null;
-        if (m1) dbValue = parseFloat(m1[1]);
-        else {
-          const m2 = text.match(/RMS level\s*[:=]\s*([-\d.]+)\s*dB/i);
-          if (m2) dbValue = parseFloat(m2[1]);
-        }
-        if (dbValue !== null && !Number.isNaN(dbValue)) {
-          const clamped = Math.max(-60, Math.min(0, dbValue));
-          const normalized = Math.round((1 - (clamped / -60)) * 100);
-          recordingInfo.volumeData.push({ timestamp: Date.now(), volume: normalized });
-          if (FFMPEG_DEBUG) {
-            logger.info(`[RecordingService] volume update for ${fileName}: ${normalized} (raw dB: ${dbValue})`, 'startRecordingWithFfmpeg');
-          }
-          this.broadcastVolume({ fileName, volume: normalized, timestamp: Date.now() });
-        }
-      } catch (e) {
-        // ignore parse errors
-      }
-    });
-
     ff.on('exit', (code, sig) => {
       recordingInfo.isRecording = false;
       recordingInfo.ffmpegProc = null;
-      // leave file on disk; caller may query getList()/getStatus()
     });
 
     ff.on('error', (err) => {
@@ -400,8 +414,12 @@ class RecordingService {
             const now = Date.now();
             const clamped = Math.max(-60, Math.min(0, dbValue));
             const normalized = Math.round((1 - (clamped / -60)) * 100);
+            if(FFMPEG_DEBUG)
+              logger.info(`[ffmpeg-monitor-${source}] volume=${normalized} rawDb=${dbValue.toFixed(6)}`, 'handleMonitorOutput');
 
-            logger.info(`[ffmpeg-monitor-${source}] volume=${normalized} rawDb=${dbValue.toFixed(6)}`, 'handleMonitorOutput');
+            if (normalized === 0 && meta.lastSentVolume === 0) {
+              return;
+            }
 
             if (meta.lastSentVolume === normalized && now - meta.lastSentAt < 120) {
               return;
@@ -470,55 +488,19 @@ class RecordingService {
     return { success: true };
   }
 
-  // 添加录音数据块并计算音量
-  addRecordingChunk(fileName, chunk) {
-    const recordingInfo = this.activeRecordings.get(fileName);
-    if (!recordingInfo) {
-      throw new Error(`录音 ${fileName} 不存在或未激活`);
-    }
-
-    // 将Buffer转换为音频数据并计算音量
-    const volume = this.calculateVolume(chunk);
-
-    // 记录音量数据
-    recordingInfo.volumeData.push({
-      timestamp: Date.now(),
-      volume: volume
-    });
-
-    // 广播音量数据
-    this.broadcastVolume({
-      fileName,
-      volume: volume,
-      timestamp: Date.now()
-    });
-
-    recordingInfo.chunks.push(chunk);
-    return true;
-  }
-
-  // 计算音量（RMS值）
-  calculateVolume(buffer) {
-    // 将buffer转换为Float32Array进行处理
-    const float32Array = new Float32Array(buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength));
-
-    let sum = 0;
-    for (let i = 0; i < float32Array.length; i++) {
-      sum += float32Array[i] * float32Array[i];
-    }
-
-    const rms = Math.sqrt(sum / float32Array.length);
-    // 将RMS值映射到0-100的范围内
-    const normalizedVolume = Math.min(100, Math.max(0, Math.round(rms * 1000)));
-
-    return normalizedVolume;
-  }
-
   // 停止录音
-  stopRecording(fileName) {
+  async stopRecording(fileName) {
     const recordingInfo = this.activeRecordings.get(fileName);
     if (!recordingInfo) {
       throw new Error(`录音 ${fileName} 不存在或未激活`);
+    }
+
+    const clientId = recordingInfo.clientId;
+
+    if (clientId !== null && clientId !== undefined) {
+      try {
+        this.stopVolumeMonitor(clientId);
+      } catch (e) { }
     }
 
     // If ffmpeg process is active for this recording, try graceful shutdown
@@ -530,14 +512,7 @@ class RecordingService {
         }
       } catch (e) { }
 
-      // wait briefly for exit then force kill
-      const proc = recordingInfo.ffmpegProc;
-      const timeout = setTimeout(() => {
-        try { proc.kill('SIGKILL'); } catch (e) { }
-      }, 3000);
-
-      // When process exits, we will finalize below
-      proc.on('exit', () => clearTimeout(timeout));
+      await this.waitForProcessClose(recordingInfo.ffmpegProc, 5000);
     }
 
     // If no ffmpeg process used and chunks were collected (legacy mode), write them
@@ -593,43 +568,9 @@ class RecordingService {
     }
   }
 
-  // 获取录音状态
-  getStatus(fileName) {
-    if (fileName) {
-      const recordingInfo = this.activeRecordings.get(fileName);
-      if (!recordingInfo) {
-        return {
-          fileName,
-          isRecording: false,
-          found: false
-        };
-      }
-
-      return {
-        fileName,
-        isRecording: Boolean(recordingInfo.isRecording),
-        found: true,
-        startTime: recordingInfo.startTime,
-        clientId: recordingInfo.clientId,
-        volumeData: recordingInfo.volumeData || [],
-        chunkCount: Array.isArray(recordingInfo.chunks) ? recordingInfo.chunks.length : 0,
-        filePath: recordingInfo.filePath
-      };
-    }
-
-    return Array.from(this.activeRecordings.values()).map((recordingInfo) => ({
-      fileName: recordingInfo.fileName,
-      isRecording: Boolean(recordingInfo.isRecording),
-      startTime: recordingInfo.startTime,
-      clientId: recordingInfo.clientId,
-      volumeData: recordingInfo.volumeData || [],
-      chunkCount: Array.isArray(recordingInfo.chunks) ? recordingInfo.chunks.length : 0,
-      filePath: recordingInfo.filePath
-    }));
-  }
 
   // 删除录音文件
-  deleteRecording(fileName) {
+  async deleteRecording(fileName) {
     const filePath = path.join(recordingDir, fileName);
 
     // 验证文件名安全性
@@ -643,7 +584,7 @@ class RecordingService {
 
     // 如果正在录音，则先停止
     if (this.activeRecordings.has(fileName)) {
-      this.stopRecording(fileName);
+      await this.stopRecording(fileName);
     }
 
     fs.unlinkSync(filePath);
