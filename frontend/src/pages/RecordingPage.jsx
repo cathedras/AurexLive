@@ -1,10 +1,11 @@
-import { useState, useRef, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Download, Headphones, Pause, Play, Trash2 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
+
 import { useFloatingAudioPlayer } from '../component/FloatingAudioPlayer'
 import Modal from '../component/Modal'
-import { getRecordingList, deleteRecording, startRecordingBackend, stopRecordingBackend } from '../services/musicPlay';
-import wsClientService from '../services/wsClientService';
-import { Download, Headphones, Trash2, Play, Pause } from 'lucide-react'
+import { deleteRecording, getRecordingList, startRecordingBackend, stopRecordingBackend } from '../services/musicPlay'
+import wsClientService from '../services/wsClientService'
 
 const RecordingPage = () => {
   const [isRecording, setIsRecording] = useState(false);

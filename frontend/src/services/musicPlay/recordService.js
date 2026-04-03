@@ -1,88 +1,62 @@
-import wsClient from '../wsClientService.js';
+import httpClient, { apiDelete, apiGet, apiPost } from '../../utils/http'
+import wsClient from '../wsClientService.js'
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/v1/recording';
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/v1/recording'
 
 export const getRecordingStatus = async (fileName) => {
   try {
-    const params = fileName ? `?fileName=${encodeURIComponent(fileName)}` : '';
-    const response = await fetch(`${BASE_URL}/recording-status${params}`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-    });
-    return await response.json();
+    const params = fileName ? { fileName } : {}
+    return await apiGet(`${BASE_URL}/recording-status`, { params })
   } catch (error) {
-    console.error('获取录音状态失败:', error);
-    throw error;
+    console.error('获取录音状态失败:', error)
+    throw error
   }
-};
+}
 
 export const getRecordingList = async () => {
   try {
-    const response = await fetch(`${BASE_URL}/list-recordings`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-    });
-    return await response.json();
+    return await apiGet(`${BASE_URL}/list-recordings`)
   } catch (error) {
-    console.error('获取录音列表失败:', error);
-    throw error;
+    console.error('获取录音列表失败:', error)
+    throw error
   }
-};
+}
 
 export const listRecordingDevices = async () => {
   try {
-    const response = await fetch(`${BASE_URL}/list-devices`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-    });
-    return await response.json();
+    return await apiGet(`${BASE_URL}/list-devices`)
   } catch (error) {
-    console.error('列出设备失败:', error);
-    throw error;
+    console.error('列出设备失败:', error)
+    throw error
   }
-};
+}
 
 export const deleteRecording = async (filename) => {
   try {
-    const response = await fetch(`${BASE_URL}/${filename}`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-    });
-    return await response.json();
+    return await apiDelete(`${BASE_URL}/${encodeURIComponent(filename)}`)
   } catch (error) {
-    console.error('删除录音失败:', error);
-    throw error;
+    console.error('删除录音失败:', error)
+    throw error
   }
-};
+}
 
 export const startRecordingBackend = async ({ clientId, device } = {}) => {
   try {
-    const body = { clientId, device };
-    const response = await fetch(`${BASE_URL}/start-recording-backend`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    return await response.json();
+    return await apiPost(`${BASE_URL}/start-recording-backend`, { clientId, device })
   } catch (error) {
-    console.error('后端开始录音失败:', error);
-    throw error;
+    console.error('后端开始录音失败:', error)
+    throw error
   }
-};
+}
 
 export const stopRecordingBackend = async (fileName) => {
   try {
-    const response = await fetch(`${BASE_URL}/stop-recording-backend`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fileName }),
-    });
-    return await response.json();
+    return await apiPost(`${BASE_URL}/stop-recording-backend`, { fileName })
   } catch (error) {
-    console.error('后端停止录音失败:', error);
-    throw error;
+    console.error('后端停止录音失败:', error)
+    throw error
   }
-};
+}
 
 // ------------------------------
 // WebSocket helpers for recording (uses shared wsClient)
