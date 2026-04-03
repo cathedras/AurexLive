@@ -31,15 +31,29 @@ const settingsRoutes = require('./routes/settingsRoutes');
 const liveRoutes = require('./routes/liveRoutes');
 const clientErrorRoutes = require('./routes/clientErrorRoutes');
 const recordingRoutes = require('./routes/recordingRoutes'); // 引入录音路由
+// debugRoutes removed for unit tests
 const musicPlaybackService = require('./services/musicPlaybackService');
 const requestLogger = require('./middleware/requestLogger');
 const { notFoundHandler, errorHandler } = require('./middleware/errorHandlers');
-const openApiSpec = require('./config/openapi');
+// Prefer a generated OpenAPI JSON if present (from `backend/tools/generate-openapi.js`).
+let openApiSpec;
+const generatedSpecPath = path.join(__dirname, 'config', 'openapi.generated.json');
+if (fs.existsSync(generatedSpecPath)) {
+  try {
+    openApiSpec = require('./config/openapi.generated.json');
+    console.log('[Swagger] Loaded generated OpenAPI spec:', generatedSpecPath);
+  } catch (err) {
+    console.warn('[Swagger] Failed to load generated OpenAPI spec, falling back to static `config/openapi.js`.', err.message);
+    openApiSpec = require('./config/openapi');
+  }
+} else {
+  openApiSpec = require('./config/openapi');
+}
 
 // 创建 HTTP 服务器
 const app = express();
 const server = http.createServer(app);
-const port = 3000;
+const port = process.env.PORT || 3000;
 
 // WebSocket 服务（已抽离到 backend/wsServer.js）
 const initWebSocket = require('./wsServer');
@@ -53,18 +67,29 @@ app.use(requestLogger);
 
 ensureDirectories();
 
-app.get('/docs/openapi.json', (req, res) => {
-  res.json(openApiSpec);
-});
+// Swagger UI exposure control:
+// - Default: exposed when NODE_ENV !== 'production'
+// - Override: set SWAGGER_AUTO_EXPOSE=1 to force enable, SWAGGER_AUTO_EXPOSE=0 to force disable
+const SWAGGER_AUTO_EXPOSE = (process.env.SWAGGER_AUTO_EXPOSE === '1') || (process.env.SWAGGER_AUTO_EXPOSE !== '0' && process.env.NODE_ENV !== 'production');
 
-app.use(
-  '/docs',
-  swaggerUi.serve,
-  swaggerUi.setup(openApiSpec, {
-    explorer: true,
-    customSiteTitle: 'FileTransfer API Docs'
-  })
-);
+if (SWAGGER_AUTO_EXPOSE) {
+  app.get('/docs/openapi.json', (req, res) => {
+    res.json(openApiSpec);
+  });
+
+  app.use(
+    '/docs',
+    swaggerUi.serve,
+    swaggerUi.setup(openApiSpec, {
+      explorer: true,
+      customSiteTitle: 'FileTransfer API Docs'
+    })
+  );
+
+  console.log('[Swagger] API docs available at /docs (openapi JSON at /docs/openapi.json)');
+} else {
+  console.log('[Swagger] API docs are disabled. Set SWAGGER_AUTO_EXPOSE=1 to enable.');
+}
 
 app.use('/v1', uploadRoutes);
 app.use('/v1', fileRoutes);

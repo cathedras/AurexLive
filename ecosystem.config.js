@@ -35,5 +35,29 @@ module.exports = {
         AI_API_MODEL: 'gpt-4o-mini'
       }
     }
+    ,
+    {
+      name: 'monitor-worker',
+      script: 'backend/monitorWorker.js',
+      cwd: __dirname,
+      instances: 1,
+      exec_mode: 'fork',
+      autorestart: true,
+      watch: [
+        'runtime/monitors.json',
+        'backend/services/recordingService.js'
+      ],
+      ignore_watch: [
+        'runtime/recordings',
+        'uploads',
+        'node_modules'
+      ],
+      env: {
+        NODE_ENV: 'development'
+      },
+      env_production: {
+        NODE_ENV: 'production'
+      }
+    }
   ]
 };

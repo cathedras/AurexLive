@@ -77,6 +77,56 @@ ffmpeg -f avfoundation -list_devices true -i ""
 
 一个基于 `Express + React(Vite)` 的演出管理与播控小系统，支持文件上传、节目单维护、主持人口播词生成、当前演出展示与 PDF 导出。
 
+## 系统音频录制与虚拟音频设备（跨平台）
+
+本项目后端可以通过 `ffmpeg` 捕获系统音频或某个软件的输出音频，并保存为文件。跨平台的核心原则是：每个操作系统使用自己的虚拟音频设备和对应的 `ffmpeg` 输入后端。当前录音实现位于 [backend/services/recordingService.js](backend/services/recordingService.js)，使用单个 `ffmpeg` 进程完成录音和音量监测。
+
+### 平台建议
+
+- macOS：BlackHole 2ch 或 Loopback，配合 `avfoundation`。
+- Windows：VB-Audio Virtual Cable 或 Voicemeeter，配合 `dshow`。
+- Linux：PipeWire / PulseAudio 的虚拟 sink 或 monitor，配合 `pulse` 或 `alsa`。
+
+### 使用步骤
+
+1. 安装虚拟音频设备。
+2. 将系统输出或目标软件的输出路由到虚拟设备。
+3. 如果要边听边录，使用 Multi-Output Device、Voicemeeter 或 PulseAudio / PipeWire 的混音路由。
+4. macOS 需要给 Terminal、iTerm 或运行 Node 的宿主应用授予麦克风权限。
+5. 用 `ffmpeg` 从虚拟设备开始录制。
+
+### 常用命令
+
+- macOS 查看设备列表：
+
+```bash
+ffmpeg -f avfoundation -list_devices true -i ""
+```
+
+- macOS 录制虚拟声卡或麦克风输入：
+
+```bash
+ffmpeg -f avfoundation -i ":2" -c:a aac -b:a 128k -y recordings/out.m4a
+```
+
+- Windows 录制虚拟声卡：
+
+```bash
+ffmpeg -f dshow -i audio="CABLE Output (VB-Audio Virtual Cable)" -c:a aac -b:a 128k -y recordings/out.m4a
+```
+
+- Linux 录制 PulseAudio / PipeWire monitor：
+
+```bash
+ffmpeg -f pulse -i virtual_output.monitor -c:a aac -b:a 128k -y recordings/out.m4a
+```
+
+### 说明
+
+- 如果只录某个软件的声音，把该软件的输出单独路由到虚拟设备即可。
+- 如果需要实时监听并录音，优先使用 Multi-Output Device 或等效的系统音频路由。
+- 设备索引可以先用 `ffmpeg -f avfoundation -list_devices true -i ""` 查询，再按索引填入录制命令。
+
 ## 功能概览
 - 文件上传与列表查看（支持音频文件）
 - 音乐播放页节目单管理
