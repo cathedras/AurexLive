@@ -44,7 +44,6 @@ module.exports = {
       exec_mode: 'cluster',
       autorestart: true,
       watch: [
-        'runtime/monitors.json',
         'backend/services/recordingService.js'
       ],
       ignore_watch: [

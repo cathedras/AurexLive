@@ -11,10 +11,14 @@ const logger = createLogger({ source: 'RecordingService' });
 // Enable detailed ffmpeg I/O logging when env var set: FFMPEG_DEBUG=1 or RECORDING_DEBUG=1
 const FFMPEG_DEBUG = !!(process.env.FFMPEG_DEBUG === '1' || process.env.RECORDING_DEBUG === '1');
 
+// Smaller blocks produce faster RMS updates, but increase ffmpeg/WS traffic.
+const ASTATS_SAMPLE_SIZE = 32;
+const VOLUME_UPDATE_RATE_MS = 8;
+
 // ffmpeg args for a null-output astats/ametadata monitor (used to extract RMS levels)
 // -nostats disables the default progress output (size/time/speed)
 // asetnsamples reduces the audio block size so metadata is emitted with lower latency
-const ASTATS_MONITOR_ARGS = ['-hide_banner', '-nostats', '-map', '0:a', '-af', 'asetnsamples=n=256:pad=1,astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level:file=-', '-f', 'null', '-'];
+const ASTATS_MONITOR_ARGS = ['-hide_banner', '-nostats', '-map', '0:a', '-af', `asetnsamples=n=${ASTATS_SAMPLE_SIZE}:pad=1,astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level:file=-`, '-f', 'null', '-'];
 
 function normalizeAvfoundationAudioDevice(device) {
   if (!device || device === 'default') {
@@ -297,7 +301,9 @@ class RecordingService {
           const clamped = Math.max(-60, Math.min(0, dbValue));
           const normalized = Math.round((1 - (clamped / -60)) * 100);
           recordingInfo.volumeData.push({ timestamp: Date.now(), volume: normalized });
-          logger.info(`[RecordingService] volume update for ${fileName}: ${normalized} (raw dB: ${dbValue})`, 'startRecordingWithFfmpeg');
+          if (FFMPEG_DEBUG) {
+            logger.info(`[RecordingService] volume update for ${fileName}: ${normalized} (raw dB: ${dbValue})`, 'startRecordingWithFfmpeg');
+          }
           this.broadcastVolume({ fileName, volume: normalized, timestamp: Date.now() });
         }
       } catch (e) {
@@ -355,9 +361,9 @@ class RecordingService {
       baseArgs = ['-f', 'alsa', '-i', linuxDev];
     }
 
-    const meta = { proc: null, restarts: 0, intentionalStop: false, lastRestartAt: 0, lastSentAt: 0 };
+    const meta = { proc: null, restarts: 0, intentionalStop: false, lastRestartAt: 0, lastSentAt: 0, lastSentVolume: null };
     const MAX_RESTARTS = 5;
-    const RATE_MS = 30; // minimum ms between sent volume updates per client
+    const RATE_MS = VOLUME_UPDATE_RATE_MS; // minimum ms between sent volume updates per client
 
     const spawnMonitor = () => {
       if (meta.intentionalStop) return;
@@ -393,21 +399,37 @@ class RecordingService {
       const handleMonitorOutput = (source, chunk) => {
         try {
           const text = chunk.toString();
-          const logTime = formatMonitorLogTime(Date.now());
-          try { logger.info(`[ffmpeg-monitor-${source}][${clientId} ${logTime}] ${text.replace(/\s+/g,' ').trim().slice(0,1000)}`, 'handleMonitorOutput'); } catch (e) {}
-          const m1 = text.match(/lavfi\.astats\.Overall\.RMS_level\s*=?\s*([-\d.]+)\b/);
+          const rmsPattern = /lavfi\.astats\.Overall\.RMS_level\s*=?\s*([-\d.]+)\b/g;
+          const fallbackPattern = /RMS level\s*[:=]\s*([-\d.]+)\s*dB/i;
           let dbValue = null;
-          if (m1) dbValue = parseFloat(m1[1]);
-          else {
-            const m2 = text.match(/RMS level\s*[:=]\s*([-\d.]+)\s*dB/i);
-            if (m2) dbValue = parseFloat(m2[1]);
+
+          let match;
+          while ((match = rmsPattern.exec(text)) !== null) {
+            dbValue = parseFloat(match[1]);
           }
+
+          if (dbValue === null) {
+            const fallbackMatch = text.match(fallbackPattern);
+            if (fallbackMatch) {
+              dbValue = parseFloat(fallbackMatch[1]);
+            }
+          }
+
           if (dbValue !== null && !Number.isNaN(dbValue)) {
             const now = Date.now();
-            if (now - meta.lastSentAt < RATE_MS) return; // rate limit
-            meta.lastSentAt = now;
             const clamped = Math.max(-60, Math.min(0, dbValue));
             const normalized = Math.round((1 - (clamped / -60)) * 100);
+
+            logger.info(`[ffmpeg-monitor-${source}] volume=${normalized} rawDb=${dbValue.toFixed(6)}`, 'handleMonitorOutput');
+
+            if (meta.lastSentVolume === normalized && now - meta.lastSentAt < 120) {
+              return;
+            }
+
+            if (now - meta.lastSentAt < RATE_MS) return; // rate limit
+
+            meta.lastSentAt = now;
+            meta.lastSentVolume = normalized;
             const payload = normalized;
             try { wsClientService.sendToClient(clientId, payload); } catch (e) {}
           }

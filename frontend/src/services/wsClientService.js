@@ -55,6 +55,52 @@ export async function connect(param, onMessageVolume, onOpen, onClose, onGeneric
   return new Promise((resolve, reject) => {
     let finished = false;
     let ai = 0;
+    let volumeFrameId = null;
+    let volumeQueued = null;
+
+    const flushVolumeMessage = () => {
+      volumeFrameId = null;
+      if (volumeQueued == null) {
+        return;
+      }
+
+      const nextVolume = volumeQueued;
+      volumeQueued = null;
+
+      try {
+        onMessageVolume && onMessageVolume(nextVolume);
+      } catch (e) {}
+    };
+
+    const queueVolumeMessage = (volumeData) => {
+      volumeQueued = volumeData;
+
+      if (volumeFrameId != null) {
+        return;
+      }
+
+      if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+        volumeFrameId = window.requestAnimationFrame(flushVolumeMessage);
+      } else {
+        volumeFrameId = setTimeout(flushVolumeMessage, 16);
+      }
+    };
+
+    const cancelQueuedVolumeMessage = () => {
+      if (volumeFrameId == null) {
+        volumeQueued = null;
+        return;
+      }
+
+      if (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
+        window.cancelAnimationFrame(volumeFrameId);
+      } else {
+        clearTimeout(volumeFrameId);
+      }
+
+      volumeFrameId = null;
+      volumeQueued = null;
+    };
 
     const wrapOnOpen = (ws, ev) => {
       finished = true;
@@ -68,6 +114,7 @@ export async function connect(param, onMessageVolume, onOpen, onClose, onGeneric
     };
 
     const wrapOnClose = (ev) => {
+      cancelQueuedVolumeMessage();
       try { onClose && onClose(ev); } catch (e) {}
       if (!finished) {
         finished = true;
@@ -90,7 +137,7 @@ export async function connect(param, onMessageVolume, onOpen, onClose, onGeneric
               // try parse JSON text
               if (typeof data === 'string') {
                 const obj = JSON.parse(data);
-                if (obj && obj.type === 'volume') onMessageVolume && onMessageVolume(obj.data);
+                  if (obj && obj.type === 'volume') queueVolumeMessage(obj.data);
                 else onGenericMessage && onGenericMessage(obj);
               } else {
                 // binary frame -> try decode text then parse
@@ -98,7 +145,7 @@ export async function connect(param, onMessageVolume, onOpen, onClose, onGeneric
                   const txt = uint8ArrayToText(new Uint8Array(evm.data));
                   if (txt) {
                     const obj = JSON.parse(txt);
-                    if (obj && obj.type === 'volume') onMessageVolume && onMessageVolume(obj.data);
+                      if (obj && obj.type === 'volume') queueVolumeMessage(obj.data);
                     else onGenericMessage && onGenericMessage(obj);
                     return;
                   }
@@ -117,6 +164,7 @@ export async function connect(param, onMessageVolume, onOpen, onClose, onGeneric
         };
 
         ws.onerror = () => {
+          cancelQueuedVolumeMessage();
           if (localTimeout) { clearTimeout(localTimeout); localTimeout = null; }
           try { ws.close(); } catch (e) {}
           tryNext();

@@ -19,14 +19,16 @@ const RecordingPage = () => {
   const [wsConnected, setWsConnected] = useState(false);
   const [devices, setDevices] = useState([]);
   const [selectedDevice, setSelectedDevice] = useState(null);
-  const [volume, setVolume] = useState(0);
   const [ws, setWs] = useState(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const timerRef = useRef(null);
   const audioRef = useRef(null);
   const canvasRef = useRef(null);
+  const volumeValueRef = useRef(null);
   const animationRef = useRef(null);
+  const volumeTargetRef = useRef(0);
+  const volumeDisplayRef = useRef(0);
 
   // 检查浏览器是否支持录音功能
   const checkSupport = () => {
@@ -129,41 +131,78 @@ const RecordingPage = () => {
     };
   }, []);
 
-  // 绘制音量可视化效果
   useEffect(() => {
-    if (!canvasRef.current || !isRecording) return;
-    
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    const width = canvas.width;
-    const height = canvas.height;
-    
-    // 清除画布
-    ctx.clearRect(0, 0, width, height);
-    
-    // 绘制音量柱状图
-    const barWidth = 10;
-    const barCount = Math.floor(width / (barWidth + 2));
-    const barHeight = (volume / 100) * height;
-    
-    for (let i = 0; i < barCount; i++) {
-      // 随机偏移以创建更自然的效果
-      const offset = Math.sin(Date.now() / 200 + i) * (barHeight / 4);
-      const currentHeight = Math.max(5, barHeight + offset);
-      
-      // 根据音量改变颜色
-      const hue = volume > 70 ? 0 : volume > 40 ? 30 : 120; // 红 -> 黄 -> 绿
-      ctx.fillStyle = `hsl(${hue}, 80%, 50%)`;
-      
-      const x = i * (barWidth + 2);
-      const y = height - currentHeight;
-      
-      // 绘制圆角矩形
-      ctx.beginPath();
-      ctx.roundRect(x, y, barWidth, currentHeight, 3);
-      ctx.fill();
+    if (!isRecording) {
+      volumeTargetRef.current = 0;
+      volumeDisplayRef.current = 0;
+      if (volumeValueRef.current) {
+        volumeValueRef.current.textContent = '当前音量: 0%';
+      }
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
+      }
+      return undefined;
     }
-  }, [volume, isRecording]);
+
+    let cancelled = false;
+
+    const tick = () => {
+      if (cancelled) {
+        return;
+      }
+
+      const target = Math.max(0, Math.min(100, Number(volumeTargetRef.current || 0)));
+      const current = Number(volumeDisplayRef.current || 0);
+      const delta = target - current;
+      const next = Math.abs(delta) < 0.35 ? target : current + delta * 0.24;
+
+      volumeDisplayRef.current = next;
+
+      const displayVolume = Math.round(next);
+      if (volumeValueRef.current) {
+        volumeValueRef.current.textContent = `当前音量: ${displayVolume}%`;
+      }
+
+      if (canvasRef.current) {
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        const width = canvas.width;
+        const height = canvas.height;
+        const barWidth = 10;
+        const barCount = Math.floor(width / (barWidth + 2));
+        const barHeight = (displayVolume / 100) * height;
+
+        ctx.clearRect(0, 0, width, height);
+
+        for (let i = 0; i < barCount; i += 1) {
+          const offset = Math.sin(Date.now() / 200 + i) * (barHeight / 4);
+          const currentHeight = Math.max(5, barHeight + offset);
+          const hue = displayVolume > 70 ? 0 : displayVolume > 40 ? 30 : 120;
+          ctx.fillStyle = `hsl(${hue}, 80%, 50%)`;
+
+          const x = i * (barWidth + 2);
+          const y = height - currentHeight;
+
+          ctx.beginPath();
+          ctx.roundRect(x, y, barWidth, currentHeight, 3);
+          ctx.fill();
+        }
+      }
+
+      animationRef.current = requestAnimationFrame(tick);
+    };
+
+    animationRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      cancelled = true;
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
+      }
+    };
+  }, [isRecording]);
 
   // 发送音频数据块到后端
   const sendAudioChunk = async (chunk, filename) => {
@@ -195,9 +234,9 @@ const RecordingPage = () => {
         (data) => {
           // 处理音量数据
           if (typeof data === 'number') {
-            setVolume(data || 0);
+            volumeTargetRef.current = Math.max(0, Math.min(100, Number(data) || 0));
           } else if (data && data.volume !== undefined) {
-            setVolume(data.volume || 0);
+            volumeTargetRef.current = Math.max(0, Math.min(100, Number(data.volume) || 0));
           }
         },
         () => {
@@ -270,7 +309,11 @@ const RecordingPage = () => {
         console.error('stop backend failed', e);
       }
       setIsRecording(false);
-      setVolume(0);
+      volumeTargetRef.current = 0;
+      volumeDisplayRef.current = 0;
+      if (volumeValueRef.current) {
+        volumeValueRef.current.textContent = '当前音量: 0%';
+      }
 
       // close SSE
       if (ws && ws.close) {
@@ -421,7 +464,7 @@ const RecordingPage = () => {
               height="100"
               className="volume-canvas"
             />
-            <div className="volume-level">当前音量: {volume}%</div>
+            <div ref={volumeValueRef} className="volume-level">当前音量: 0%</div>
           </div>
         )}
       </div>
