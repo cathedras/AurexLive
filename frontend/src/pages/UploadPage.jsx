@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
+import { fetchFileList as loadFileList, uploadFileWithProgress } from '../services/upload/uploadService'
+
 function UploadPage() {
   const [selectedFile, setSelectedFile] = useState(null)
   const [message, setMessage] = useState('等待选择文件...')
@@ -76,14 +78,7 @@ function UploadPage() {
 
   const fetchFileList = async () => {
     try {
-      const response = await fetch('/v1/files')
-      const contentType = response.headers.get('content-type') || ''
-      if (!contentType.includes('application/json')) {
-        await response.text()
-        throw new Error(`接口未返回 JSON（状态码 ${response.status}）`)
-      }
-
-      const result = await response.json()
+      const result = await loadFileList()
       if (!result.success) {
         throw new Error(result.message || '加载失败')
       }
@@ -156,28 +151,7 @@ function UploadPage() {
 }
 
 function uploadWithProgress(formData, onProgress) {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest()
-    xhr.open('POST', '/v1/upload')
-
-    xhr.upload.onprogress = (event) => {
-      if (event.lengthComputable) {
-        const percent = Math.round((event.loaded / event.total) * 100)
-        onProgress(percent)
-      }
-    }
-
-    xhr.onload = () => {
-      try {
-        resolve(JSON.parse(xhr.responseText))
-      } catch {
-        reject(new Error('服务器返回格式错误'))
-      }
-    }
-
-    xhr.onerror = () => reject(new Error('网络异常'))
-    xhr.send(formData)
-  })
+  return uploadFileWithProgress(formData, onProgress)
 }
 
 function formatFileSize(bytes) {

@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 
+import {
+  fetchCurrentShowState as loadCurrentShowState,
+  fetchMobileLinks as loadMobileLinks,
+  fetchUserSettings as loadUserSettings,
+} from '../services/home/homePageService'
+
 function HomePage() {
   const [currentShowText, setCurrentShowText] = useState('当前未设置演出，请先在音乐播放页保存演出。')
   const [currentProgramText, setCurrentProgramText] = useState('当前表演节目：暂无')
@@ -73,42 +79,9 @@ function HomePage() {
     await Promise.all([fetchCurrentState(), fetchUserSettings(), fetchMobileLinks()])
   }
 
-  const fetchMobileLinks = async () => {
-    try {
-      const response = await fetch('/v1/mobile/links')
-      const result = await response.json()
-      if (!result.success) {
-        return
-      }
-      setMobileLinks(result)
-    } catch {
-      setMobileLinks(null)
-    }
-  }
-
-  const fetchUserSettings = async () => {
-    try {
-      const response = await fetch('/v1/settings')
-      const result = await response.json()
-      if (!result.success || !result.settings) {
-        return
-      }
-
-      const fontScale = Number(result.settings?.preferences?.fontScale || 100)
-      const marqueeSpeed = Number(result.settings?.preferences?.marqueeSpeed || 16)
-      const autoPlay = Boolean(result.settings?.preferences?.autoPlay)
-      setFontScalePercent(Math.max(80, Math.min(140, fontScale)))
-      setMarqueeSpeedSec(Math.max(6, Math.min(40, marqueeSpeed)))
-      setAutoPlayEnabled(autoPlay)
-    } catch {
-      // keep defaults
-    }
-  }
-
   const fetchCurrentState = async () => {
     try {
-      const response = await fetch('/v1/music/show/current-state')
-      const result = await response.json()
+      const result = await loadCurrentShowState()
 
       if (!result.success) {
         throw new Error(result.message || '状态获取失败')
@@ -130,6 +103,36 @@ function HomePage() {
     } catch {
       setCurrentShowText('当前演出获取失败，请稍后刷新重试。')
       setCurrentProgramText('当前表演节目获取失败，请稍后刷新重试。')
+    }
+  }
+
+  const fetchMobileLinks = async () => {
+    try {
+      const result = await loadMobileLinks()
+      if (!result.success) {
+        return
+      }
+      setMobileLinks(result)
+    } catch {
+      setMobileLinks(null)
+    }
+  }
+
+  const fetchUserSettings = async () => {
+    try {
+      const result = await loadUserSettings()
+      if (!result.success || !result.settings) {
+        return
+      }
+
+      const fontScale = Number(result.settings?.preferences?.fontScale || 100)
+      const marqueeSpeed = Number(result.settings?.preferences?.marqueeSpeed || 16)
+      const autoPlay = Boolean(result.settings?.preferences?.autoPlay)
+      setFontScalePercent(Math.max(80, Math.min(140, fontScale)))
+      setMarqueeSpeedSec(Math.max(6, Math.min(40, marqueeSpeed)))
+      setAutoPlayEnabled(autoPlay)
+    } catch {
+      // keep defaults
     }
   }
 

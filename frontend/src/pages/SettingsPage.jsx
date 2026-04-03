@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
+import { fetchSettings as loadSettings, saveSettings as persistSettings } from '../services/settings/settingsService'
+
 const defaultSettings = {
   profile: {
     displayName: '',
@@ -36,8 +38,7 @@ function SettingsPage() {
 
   const fetchSettings = async () => {
     try {
-      const response = await fetch('/v1/settings')
-      const result = await response.json()
+      const result = await loadSettings()
       if (!result.success) {
         throw new Error(result.message || '加载失败')
       }
@@ -61,14 +62,7 @@ function SettingsPage() {
   const onSave = async () => {
     try {
       setSaving(true)
-      const response = await fetch('/v1/settings', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ settings }),
-      })
-      const result = await response.json()
+      const result = await persistSettings(settings)
       if (!result.success) {
         throw new Error(result.message || '保存失败')
       }

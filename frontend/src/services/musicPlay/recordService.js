@@ -1,4 +1,4 @@
-import httpClient, { apiDelete, apiGet, apiPost } from '../../utils/http'
+import httpClient, { apiDelete, apiGet, apiPost } from '../apiClientUtil'
 import wsClient from '../wsClientService.js'
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/v1/recording'
