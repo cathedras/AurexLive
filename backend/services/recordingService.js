@@ -123,25 +123,6 @@ function resolveFfmpegPath() {
   return 'ffmpeg';
 }
 
-function ensureRecordingFileExists(filePath) {
-  if (fs.existsSync(filePath)) {
-    return;
-  }
-
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.closeSync(fs.openSync(filePath, 'a'));
-}
-
-function formatMonitorLogTime(timestamp) {
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) {
-    return String(timestamp);
-  }
-
-  const pad = (value, length = 2) => String(value).padStart(length, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.${pad(date.getMilliseconds(), 3)}`;
-}
-
 class RecordingService {
   constructor() {
     this.activeRecordings = new Map(); // 存储活动录音的状态
