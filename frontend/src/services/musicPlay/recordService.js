@@ -1,7 +1,7 @@
 import httpClient, { apiDelete, apiGet, apiPost } from '../apiClientUtil'
 import wsClient from '../wsClientService.js'
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/v1/recording'
+const BASE_URL = import.meta.env.VITE_API_BASE_URL +'/recording' || '/v1/recording'
 
 export const getRecordingStatus = async (fileName) => {
   try {
