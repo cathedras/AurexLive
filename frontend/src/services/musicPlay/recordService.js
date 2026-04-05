@@ -78,6 +78,24 @@ export const stopRecordingBackend = async (fileName) => {
   }
 }
 
+export const startLiveMicPlayback = async (device, outputDevice) => {
+  try {
+    return await apiPost(`${BASE_URL}/start-live-mic-playback`, { device, outputDevice })
+  } catch (error) {
+    console.error('启动实时监听失败:', error)
+    throw error
+  }
+}
+
+export const stopLiveMicPlayback = async () => {
+  try {
+    return await apiPost(`${BASE_URL}/stop-live-mic-playback`, {})
+  } catch (error) {
+    console.error('停止实时监听失败:', error)
+    throw error
+  }
+}
+
 export const useRecording = async (filename, newName) => {
   try {
     return await apiPost(`${BASE_URL}/use-recording`, { filename, newName })

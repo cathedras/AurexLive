@@ -50,6 +50,45 @@ function ensureLiveStateFile() {
   fs.writeFileSync(liveStateJsonPath, JSON.stringify(initial, null, 2), 'utf-8');
 }
 
+function writeLiveStateFileAtomic(nextState) {
+  const runtimeDir = path.dirname(liveStateJsonPath);
+  if (!fs.existsSync(runtimeDir)) {
+    fs.mkdirSync(runtimeDir, { recursive: true });
+  }
+
+  const tempPath = `${liveStateJsonPath}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`;
+  const serialized = JSON.stringify(nextState, null, 2);
+
+  try {
+    fs.writeFileSync(tempPath, serialized, 'utf-8');
+    try {
+      fs.renameSync(tempPath, liveStateJsonPath);
+    } catch (renameError) {
+      try {
+        fs.writeFileSync(liveStateJsonPath, serialized, 'utf-8');
+      } catch (fallbackError) {
+        throw fallbackError;
+      }
+      try {
+        if (fs.existsSync(tempPath)) {
+          fs.unlinkSync(tempPath);
+        }
+      } catch {
+        // ignore cleanup failure
+      }
+      return;
+    }
+  } finally {
+    try {
+      if (fs.existsSync(tempPath)) {
+        fs.unlinkSync(tempPath);
+      }
+    } catch {
+      // ignore cleanup failure
+    }
+  }
+}
+
 function normalizeLiveState(parsed = {}) {
   return {
     ...defaultLiveState,
@@ -63,8 +102,26 @@ function normalizeLiveState(parsed = {}) {
 
 function readLiveState() {
   ensureLiveStateFile();
-  const rawText = fs.readFileSync(liveStateJsonPath, 'utf-8');
-  return normalizeLiveState(JSON.parse(rawText));
+  try {
+    const rawText = fs.readFileSync(liveStateJsonPath, 'utf-8');
+    return normalizeLiveState(JSON.parse(rawText));
+  } catch (error) {
+    const backupPath = `${liveStateJsonPath}.corrupt-${Date.now()}`;
+    try {
+      if (fs.existsSync(liveStateJsonPath)) {
+        fs.renameSync(liveStateJsonPath, backupPath);
+      }
+    } catch {
+      // ignore backup failure
+    }
+
+    const repaired = {
+      ...defaultLiveState,
+      updatedAt: new Date().toISOString(),
+    };
+    writeLiveStateFileAtomic(repaired);
+    return repaired;
+  }
 }
 
 function writeLiveState(nextState) {
@@ -77,20 +134,36 @@ function writeLiveState(nextState) {
     },
   });
 
-  fs.writeFileSync(liveStateJsonPath, JSON.stringify(output, null, 2), 'utf-8');
+  try {
+    writeLiveStateFileAtomic(output);
+  } catch {
+    // preserve runtime stability even when the JSON file is temporarily unavailable
+  }
   return output;
 }
 
 function updateBackendPlaybackState(partialState) {
-  const prev = readLiveState();
-  return writeLiveState({
-    ...prev,
-    backendPlayback: {
-      ...prev.backendPlayback,
-      ...partialState,
+  try {
+    const prev = readLiveState();
+    return writeLiveState({
+      ...prev,
+      backendPlayback: {
+        ...prev.backendPlayback,
+        ...partialState,
+        updatedAt: new Date().toISOString(),
+      },
+    });
+  } catch {
+    return normalizeLiveState({
+      ...defaultLiveState,
       updatedAt: new Date().toISOString(),
-    },
-  });
+      backendPlayback: {
+        ...defaultLiveState.backendPlayback,
+        ...partialState,
+        updatedAt: new Date().toISOString(),
+      },
+    });
+  }
 }
 
 module.exports = {

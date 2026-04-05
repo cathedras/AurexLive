@@ -1,10 +1,11 @@
 import { Copy, Headphones, Pause, Play, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import * as Tooltip from '@radix-ui/react-tooltip'
 
 import { useFloatingAudioPlayer } from '../component/FloatingAudioPlayer'
 import Modal from '../component/Modal'
-import { deleteRecording, getRecordingList, startRecordingBackend, stopRecordingBackend, switchOutputDevice, useRecording } from '../services/musicPlay'
+import { deleteRecording, getRecordingList, startLiveMicPlayback, startRecordingBackend, stopLiveMicPlayback, stopRecordingBackend, switchOutputDevice, useRecording } from '../services/musicPlay'
 import wsClientService from '../services/wsClientService'
 
 const RecordingPage = () => {
@@ -24,6 +25,8 @@ const RecordingPage = () => {
   const [outputDevices, setOutputDevices] = useState([]);
   const [selectedOutputDevice, setSelectedOutputDevice] = useState(null);
   const [switchingOutputDevice, setSwitchingOutputDevice] = useState(false);
+  const [livePlaybackEnabled, setLivePlaybackEnabled] = useState(false);
+  const [livePlaybackLoading, setLivePlaybackLoading] = useState(false);
   const [ws, setWs] = useState(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -54,6 +57,78 @@ const RecordingPage = () => {
     setWsConnected(false);
     setClientId(null);
     resetVolumeDisplay();
+  };
+
+  const isVolumeSocketOpen = () => {
+    try {
+      return Boolean(ws && typeof ws.readyState === 'function' && ws.readyState() === WebSocket.OPEN);
+    } catch {
+      return false;
+    }
+  };
+
+  const ensureVolumeMonitoringForLivePlayback = async () => {
+    if (!enableVolumeWs) {
+      setEnableVolumeWs(true);
+    }
+
+    if (!isVolumeSocketOpen()) {
+      const socket = await connectVolumeSocket();
+      subscribeVolumeSocket(socket, 'live-mic-playback', selectedDevice || null);
+      return socket;
+    }
+
+    subscribeVolumeSocket(ws, 'live-mic-playback', selectedDevice || null);
+    return ws;
+  };
+
+  const stopLivePlaybackProcess = async () => {
+    try {
+      await stopLiveMicPlayback();
+    } catch (err) {
+      console.error('停止实时监听失败:', err)
+    }
+  };
+
+  const stopLivePlayback = async () => {
+    try {
+      await stopLivePlaybackProcess();
+    } finally {
+      closeVolumeSocket();
+      setEnableVolumeWs(false);
+      setLivePlaybackEnabled(false);
+      setLivePlaybackLoading(false);
+    }
+  };
+
+  const startLivePlayback = async () => {
+    setLivePlaybackLoading(true);
+    setError('');
+
+    const shouldEnableWs = !enableVolumeWs;
+
+    try {
+      const result = await startLiveMicPlayback(selectedDevice || null, selectedOutputDevice || null);
+      if (!result || !result.success) {
+        throw new Error((result && result.error) || '启动实时监听失败');
+      }
+
+      await ensureVolumeMonitoringForLivePlayback();
+      setLivePlaybackEnabled(true);
+      setLivePlaybackLoading(false);
+    } catch (error) {
+      try {
+        await stopLivePlaybackProcess();
+      } catch (stopError) {
+        console.error('回滚实时监听失败:', stopError);
+      }
+
+      if (shouldEnableWs) {
+        setEnableVolumeWs(false);
+      }
+
+      throw error;
+    }
   };
 
   const connectVolumeSocket = async () => {
@@ -221,7 +296,7 @@ const RecordingPage = () => {
   }, []);
 
   useEffect(() => {
-    if (!isRecording) {
+    if (!isRecording && !livePlaybackEnabled) {
       volumeTargetRef.current = 0;
       volumeDisplayRef.current = 0;
       if (volumeValueRef.current) {
@@ -291,12 +366,17 @@ const RecordingPage = () => {
         animationRef.current = null;
       }
     };
-  }, [isRecording]);
+  }, [isRecording, livePlaybackEnabled]);
 
   // 开始录音
   const startRecordingHandler = async () => {
     if (!checkSupport()) {
       setError('您的浏览器不支持录音功能');
+      return;
+    }
+
+    if (livePlaybackEnabled || livePlaybackLoading) {
+      setError('请先停止实时监听，再开始录音');
       return;
     }
 
@@ -365,6 +445,7 @@ const RecordingPage = () => {
       }
       setIsRecording(false);
       closeVolumeSocket();
+      await stopLivePlayback();
 
       if (timerRef.current) {
         clearInterval(timerRef.current);
@@ -486,24 +567,72 @@ const RecordingPage = () => {
     }
   };
 
-    const handleOutputDeviceChange = async (event) => {
+  const livePlaybackStatus = switchingOutputDevice
+    ? (livePlaybackEnabled ? '输出切换中，实时监听重启中...' : '输出设备切换中...')
+    : (livePlaybackLoading
+      ? '实时监听启动中...'
+      : (livePlaybackEnabled ? '实时监听中，已联动当前输出设备' : '实时监听已关闭'));
+
+  const livePlaybackStatusTone = switchingOutputDevice || livePlaybackLoading
+    ? 'pending'
+    : (livePlaybackEnabled ? 'connected' : 'disconnected');
+
+  const handleOutputDeviceChange = async (event) => {
       const nextDevice = event.target.value;
       const previousDevice = selectedOutputDevice;
       setSelectedOutputDevice(nextDevice);
 
       try {
         setSwitchingOutputDevice(true);
+        const shouldRestartLivePlayback = livePlaybackEnabled;
+        if (shouldRestartLivePlayback) {
+          await stopLivePlaybackProcess();
+        }
+
         const result = await switchOutputDevice(nextDevice);
         if (!result || !result.success) {
           throw new Error((result && result.message) || '切换输出设备失败');
         }
+
+        if (shouldRestartLivePlayback) {
+          await startLivePlayback();
+        }
       } catch (err) {
         setSelectedOutputDevice(previousDevice);
+        if (livePlaybackEnabled) {
+          try {
+            await startLivePlayback();
+          } catch (restartErr) {
+            console.error('恢复实时监听失败:', restartErr);
+          }
+        }
         setError(`切换输出设备失败: ${err.message}`);
       } finally {
         setSwitchingOutputDevice(false);
+        setLivePlaybackLoading(false);
       }
     };
+
+  const toggleLivePlaybackHandler = async () => {
+    if (livePlaybackEnabled) {
+      await stopLivePlayback();
+      return;
+    }
+
+    if (isRecording || loading || switchingOutputDevice) {
+        setError('正在录音时不能开启实时监听，请先停止录音');
+        return;
+    }
+
+    try {
+      await startLivePlayback();
+    } catch (err) {
+      setLivePlaybackEnabled(false);
+      setError(`启动实时监听失败: ${err.message}`);
+    } finally {
+      setLivePlaybackLoading(false);
+    }
+  };
 
   // 播放录音
   const { openFloatingPlayer } = useFloatingAudioPlayer()
@@ -535,18 +664,23 @@ const RecordingPage = () => {
       if (timerRef.current) {
         clearInterval(timerRef.current);
       }
+      try {
+        stopLiveMicPlayback();
+        } catch (e) {}
+      closeVolumeSocket();
     };
   }, []);
 
   return (
-    <div className="container music-container">
-      <div className="page-actions">
-        <Link to="/page" className="back-link">返回首页</Link>
-        <Link to="/page/settings" className="back-link">用户设置</Link>
-        <Link to="/page/music" className="back-link">音乐播放</Link>
-      </div>
+    <Tooltip.Provider>
+      <div className="container music-container">
+        <div className="page-actions">
+          <Link to="/page" className="back-link">返回首页</Link>
+          <Link to="/page/settings" className="back-link">用户设置</Link>
+          <Link to="/page/music" className="back-link">音乐播放</Link>
+        </div>
 
-      <h1>录音机</h1>
+        <h1>录音机</h1>
 
       <Modal open={deleteDialogOpen} title="确认删除" onClose={handleCancelDelete} footer={
         <>
@@ -560,52 +694,82 @@ const RecordingPage = () => {
       <div className="recorder-card home-panel">
         {error && <div className="recorder-error">{error}</div>}
         <div className="recorder-controls">
-          <button
-            className={`recorder-btn home-link-btn${isRecording ? ' recording' : ''}`}
+          <div className="recorder-controls-toolbar">
+            <Tooltip.Root delayDuration={120}>
+              <Tooltip.Trigger asChild>
+                <button
+                  className={`recorder-btn recorder-btn-live${livePlaybackEnabled ? ' live-active' : ''}`}
+                  onClick={toggleLivePlaybackHandler}
+                  disabled={isRecording || loading || livePlaybackLoading || switchingOutputDevice}
+                  aria-label={livePlaybackEnabled ? '停止实时监听' : '开启实时监听'}
+                >
+                  <span className="row-icon-btn-graphic" aria-hidden>
+                    <Headphones width={14} height={14} />
+                  </span>
+                  <span style={{ marginLeft: 8 }}>{livePlaybackEnabled ? '停止实时监听' : (livePlaybackLoading ? '监听中...' : '实时监听到扬声器')}</span>
+                </button>
+              </Tooltip.Trigger>
+              <Tooltip.Portal>
+                <Tooltip.Content className="music-toolbar-tooltip" side="top" sideOffset={10}>
+                  {switchingOutputDevice ? '输出设备切换中，请稍候' : (isRecording ? '录音中不可开启实时监听' : (livePlaybackEnabled ? '点击停止实时监听' : '点击开启实时监听到扬声器'))}
+                  <Tooltip.Arrow className="music-toolbar-tooltip-arrow" />
+                </Tooltip.Content>
+              </Tooltip.Portal>
+            </Tooltip.Root>
+            <button
+              className={`recorder-btn home-link-btn${isRecording ? ' recording' : ''}`}
               onClick={isRecording ? stopRecordingHandler : startRecordingHandler}
-              disabled={!checkSupport() || loading}
-            aria-label={isRecording ? '停止录音' : '开始录音'}
-          >
-            {isRecording ? <Pause width={14} height={14} /> : <Play width={14} height={14} />}
-            <span style={{ marginLeft: 8 }}>{loading ? '处理中...' : (isRecording ? '停止录音' : '开始录音')}</span>
-          </button>
-          <div style={{ marginLeft: 12 }}>
-            <label style={{ display: 'block', fontSize: 12, marginBottom: 6 }}>选择录音设备（原始输出）</label>
-            <select value={selectedDevice || ''} onChange={(e) => setSelectedDevice(e.target.value)} disabled={isRecording || loading}>
-              {devices.length === 0 && <option value="">默认设备</option>}
-              {devices.map((d, idx) => (
-                <option key={idx} value={d.value}>{d.label.length > 120 ? d.label.substring(0, 120) + '…' : d.label}</option>
-              ))}
-            </select>
+              disabled={!checkSupport() || loading || livePlaybackEnabled || livePlaybackLoading}
+              aria-label={isRecording ? '停止录音' : '开始录音'}
+            >
+              {isRecording ? <Pause width={14} height={14} /> : <Play width={14} height={14} />}
+              <span style={{ marginLeft: 8 }}>{loading ? '处理中...' : (isRecording ? '停止录音' : '开始录音')}</span>
+            </button>
+            {isRecording && <span className="recording-timer">录制时间: {formatTime(recordingTime)}</span>}
           </div>
-          <div style={{ marginLeft: 12 }}>
-            <label style={{ display: 'block', fontSize: 12, marginBottom: 6 }}>选择输出设备</label>
-            <select value={selectedOutputDevice || ''} onChange={handleOutputDeviceChange} disabled={isRecording || loading || switchingOutputDevice}>
-              {outputDevices.length === 0 && <option value="">默认输出</option>}
-              {outputDevices.map((d, idx) => (
-                <option key={idx} value={d.value}>{d.label}</option>
-              ))}
-            </select>
+
+          <div className="recorder-controls-devices">
+            <div className="recording-device-select">
+              <label className="recording-device-label">选择录音设备 </label>
+              <select className="recording-select" value={selectedDevice || ''} onChange={(e) => setSelectedDevice(e.target.value)} disabled={isRecording || loading}>
+                {devices.length === 0 && <option value="">默认设备</option>}
+                {devices.map((d, idx) => (
+                  <option key={idx} value={d.value}>{d.label.length > 120 ? d.label.substring(0, 120) + '…' : d.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="recording-device-select">
+              <label className="recording-device-label">选择输出设备</label>
+              <select className="recording-select" value={selectedOutputDevice || ''} onChange={handleOutputDeviceChange} disabled={isRecording || loading || switchingOutputDevice}>
+                {outputDevices.length === 0 && <option value="">默认输出</option>}
+                {outputDevices.map((d, idx) => (
+                  <option key={idx} value={d.value}>{d.label}</option>
+                ))}
+              </select>
+            </div>
           </div>
-          <label style={{ marginLeft: 12, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
-            <input type="checkbox" checked={enableVolumeWs} onChange={handleToggleVolumeWs} />
-            启用音量 WS（勾选后显示音量）
-          </label>
-          <div style={{ marginLeft: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-            {enableVolumeWs && (
-              <>
-                <div style={{ fontSize: 12, color: wsConnected ? '#0a0' : '#a00' }}>
-                  WS: {wsConnected ? '已连接' : '未连接'}
-                </div>
-                {clientId && <div style={{ fontSize: 12 }}>clientId: {clientId}</div>}
-              </>
-            )}
+
+          <div className="recorder-controls-status">
+            <label className="recording-checkbox">
+              <input type="checkbox" checked={enableVolumeWs} onChange={handleToggleVolumeWs} />
+              <span className="checkbox-custom"></span>
+              启用音量 WS（勾选后显示音量）
+            </label>
+            <div className="live-playback-status">
+              <span className={`live-playback-dot ${livePlaybackStatusTone}`}></span>
+              <span>{livePlaybackStatus}</span>
+            </div>
+            <div className="ws-status-indicator">
+              {enableVolumeWs && (
+                <>
+                  <span className={`ws-status-dot ${wsConnected ? 'connected' : 'disconnected'}`}></span>
+                  <span>WS: {wsConnected ? '已连接' : '未连接'}</span>
+                </>
+              )}
+            </div>
           </div>
-          {isRecording && (
-            <span className="recording-timer">录制时间: {formatTime(recordingTime)}</span>
-          )}
         </div>
-        {isRecording && enableVolumeWs && (
+        {(isRecording || livePlaybackEnabled) && enableVolumeWs && (
           <div className="volume-visualizer-card">
             <canvas
               ref={canvasRef}
@@ -626,17 +790,26 @@ const RecordingPage = () => {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
             <div style={{ fontSize: 14 }} />
             <div>
-              <button
-                className="row-icon-btn row-icon-btn-delete"
-                onClick={clearAllRecordings}
-                disabled={loading || recordings.length===0}
-                aria-label="清空录音"
-                title="清空录音"
-              >
-                <span className="row-icon-btn-graphic" aria-hidden>
-                  <Trash2 className="row-action-icon" />
-                </span>
-              </button>
+              <Tooltip.Root delayDuration={120}>
+                <Tooltip.Trigger asChild>
+                  <button
+                    className="row-icon-btn row-icon-btn-delete"
+                    onClick={clearAllRecordings}
+                    disabled={loading || recordings.length===0}
+                    aria-label="清空录音"
+                  >
+                    <span className="row-icon-btn-graphic" aria-hidden>
+                      <Trash2 className="row-action-icon" />
+                    </span>
+                  </button>
+                </Tooltip.Trigger>
+                <Tooltip.Portal>
+                  <Tooltip.Content className="music-toolbar-tooltip" side="top" sideOffset={10}>
+                    清空录音
+                    <Tooltip.Arrow className="music-toolbar-tooltip-arrow" />
+                  </Tooltip.Content>
+                </Tooltip.Portal>
+              </Tooltip.Root>
             </div>
           </div>
           <div className="recording-list-ul">
@@ -648,21 +821,51 @@ const RecordingPage = () => {
                   <span className="recording-size">大小: {formatFileSize(rec.size)}</span>
                 </div>
                 <div className="recording-actions">
-                  <button className="row-icon-btn row-icon-btn-use" onClick={() => openUseRecordingDialog(rec.filename)} aria-label={`使用 ${rec.filename}`} title={`使用 ${rec.filename}`}>
-                    <span className="row-icon-btn-graphic" aria-hidden>
-                      <Copy className="row-action-icon" />
-                    </span>
-                  </button>
-                  <button className={`row-icon-btn row-icon-btn-preview`} onClick={() => playRecording(rec)} aria-label={`试听 ${rec.filename}`}>
-                    <span className="row-icon-btn-graphic" aria-hidden>
-                      <Headphones className="row-action-icon" />
-                    </span>
-                  </button>
-                  <button className={`row-icon-btn row-icon-btn-delete`} onClick={() => confirmDeleteRecording(rec.filename)} aria-label={`删除 ${rec.filename}`}>
-                    <span className="row-icon-btn-graphic" aria-hidden>
-                      <Trash2 className="row-action-icon" />
-                    </span>
-                  </button>
+                  <Tooltip.Root delayDuration={120}>
+                    <Tooltip.Trigger asChild>
+                      <button className="row-icon-btn row-icon-btn-use" onClick={() => openUseRecordingDialog(rec.filename)} aria-label={`使用 ${rec.filename}`}>
+                        <span className="row-icon-btn-graphic" aria-hidden>
+                          <Copy className="row-action-icon" />
+                        </span>
+                      </button>
+                    </Tooltip.Trigger>
+                    <Tooltip.Portal>
+                      <Tooltip.Content className="music-toolbar-tooltip" side="top" sideOffset={10}>
+                        使用 {rec.filename}
+                        <Tooltip.Arrow className="music-toolbar-tooltip-arrow" />
+                      </Tooltip.Content>
+                    </Tooltip.Portal>
+                  </Tooltip.Root>
+                  <Tooltip.Root delayDuration={120}>
+                    <Tooltip.Trigger asChild>
+                      <button className={`row-icon-btn row-icon-btn-preview`} onClick={() => playRecording(rec)} aria-label={`试听 ${rec.filename}`}>
+                        <span className="row-icon-btn-graphic" aria-hidden>
+                          <Headphones className="row-action-icon" />
+                        </span>
+                      </button>
+                    </Tooltip.Trigger>
+                    <Tooltip.Portal>
+                      <Tooltip.Content className="music-toolbar-tooltip" side="top" sideOffset={10}>
+                        试听 {rec.filename}
+                        <Tooltip.Arrow className="music-toolbar-tooltip-arrow" />
+                      </Tooltip.Content>
+                    </Tooltip.Portal>
+                  </Tooltip.Root>
+                  <Tooltip.Root delayDuration={120}>
+                    <Tooltip.Trigger asChild>
+                      <button className={`row-icon-btn row-icon-btn-delete`} onClick={() => confirmDeleteRecording(rec.filename)} aria-label={`删除 ${rec.filename}`}>
+                        <span className="row-icon-btn-graphic" aria-hidden>
+                          <Trash2 className="row-action-icon" />
+                        </span>
+                      </button>
+                    </Tooltip.Trigger>
+                    <Tooltip.Portal>
+                      <Tooltip.Content className="music-toolbar-tooltip" side="top" sideOffset={10}>
+                        删除 {rec.filename}
+                        <Tooltip.Arrow className="music-toolbar-tooltip-arrow" />
+                      </Tooltip.Content>
+                    </Tooltip.Portal>
+                  </Tooltip.Root>
                 </div>
               </div>
             ))}
@@ -682,6 +885,7 @@ const RecordingPage = () => {
         </div>
       </Modal>
     </div>
+    </Tooltip.Provider>
   );
 };
 

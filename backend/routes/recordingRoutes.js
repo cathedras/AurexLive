@@ -55,6 +55,37 @@ router.post('/stop-recording-backend', async (req, res) => {
   }
 });
 
+// 启动 macOS 实时监听：麦克风输入直出到当前系统输出设备
+router.post('/start-live-mic-playback', (req, res) => {
+  try {
+    const { device, outputDevice } = req.body || {};
+    const result = recordingService.startLiveMicPlayback(device, outputDevice);
+
+    if (!result.success) {
+      return res.status(400).json({ success: false, message: '启动实时监听失败', error: result.error });
+    }
+
+    return res.json({ success: true, data: result.data });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: '启动实时监听失败', error: error.message });
+  }
+});
+
+// 停止 macOS 实时监听
+router.post('/stop-live-mic-playback', (req, res) => {
+  try {
+    const result = recordingService.stopLiveMicPlayback();
+
+    if (!result.success && result.error !== 'not-running') {
+      return res.status(400).json({ success: false, message: '停止实时监听失败', error: result.error });
+    }
+
+    return res.json({ success: true, data: result.data || null });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: '停止实时监听失败', error: error.message });
+  }
+});
+
 // 查询录音状态
 router.get('/recording-status', (req, res) => {
   try {

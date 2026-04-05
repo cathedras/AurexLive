@@ -150,22 +150,42 @@ if (useViteDevServer) {
 app.use(notFoundHandler);
 app.use(errorHandler);
 
-// 启动服务器
-server.listen(port, () => {
+let listenAttempts = 0;
+const maxListenAttempts = 5;
 
-  logger.info('============================================');
-  logger.info('演出服务启动成功 🚀 ✅');
-  logger.info(`访问地址: http://localhost:${port}`);
-  logger.info(`接口文档: http://localhost:${port}/docs`);
-  logger.info(`原始接口文档: http://localhost:${port}/docs/openapi.json`);
-  logger.info(`上传文件保存路径: ${uploadDir}`);
-  logger.info(`演出记录保存路径: ${showRecordDir}`);
-  logger.info(`录音文件保存路径: ${recordingDir}`);
-  logger.info(`运行时配置路径: ${runtimeConfigDir}`);
-  logger.info('============================================');
-  const startupMonitor = createStartupMonitor({
-    musicPlaybackService
+function startServer() {
+  const onError = (error) => {
+    if (error && error.code === 'EADDRINUSE' && listenAttempts < maxListenAttempts) {
+      listenAttempts += 1;
+      const retryDelayMs = Math.min(1000 * listenAttempts, 3000);
+      logger.warning(`端口 ${port} 正在被占用，${retryDelayMs}ms 后重试 (${listenAttempts}/${maxListenAttempts})`, 'server.listen');
+      setTimeout(startServer, retryDelayMs);
+      return;
+    }
+
+    logger.error(error instanceof Error ? error : new Error(String(error)), 'server.listen');
+    process.exit(1);
+  };
+
+  server.once('error', onError);
+  server.listen(port, () => {
+    server.removeListener('error', onError);
+
+    logger.info('============================================');
+    logger.info('演出服务启动成功 🚀 ✅');
+    logger.info(`访问地址: http://localhost:${port}`);
+    logger.info(`接口文档: http://localhost:${port}/docs`);
+    logger.info(`原始接口文档: http://localhost:${port}/docs/openapi.json`);
+    logger.info(`上传文件保存路径: ${uploadDir}`);
+    logger.info(`演出记录保存路径: ${showRecordDir}`);
+    logger.info(`录音文件保存路径: ${recordingDir}`);
+    logger.info(`运行时配置路径: ${runtimeConfigDir}`);
+    logger.info('============================================');
+    const startupMonitor = createStartupMonitor({
+      musicPlaybackService
+    });
+    startupMonitor.run();
   });
-  startupMonitor.run();
-  
-});
+}
+
+startServer();

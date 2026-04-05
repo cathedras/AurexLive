@@ -8,8 +8,10 @@ const { createLogger } = require('../middleware/logger');
 
 const logger = createLogger({ source: 'RecordingService' });
 
-// Enable detailed ffmpeg I/O logging when env var set: FFMPEG_DEBUG=1 or RECORDING_DEBUG=1
-const FFMPEG_DEBUG = !!(process.env.FFMPEG_DEBUG === '1' || process.env.RECORDING_DEBUG === '1');
+// Fine-grained ffmpeg debug flags for each audio path.
+const RECORDING_VOLUME_DEBUG = process.env.RECORDING_VOLUME_DEBUG === '1';
+const RECORDING_OUTPUT_DEBUG = process.env.RECORDING_OUTPUT_DEBUG === '1';
+const RECORDING_LIVE_DEBUG = process.env.RECORDING_LIVE_DEBUG === '1';
 
 // Smaller blocks produce faster RMS updates, but increase ffmpeg/WS traffic.
 const ASTATS_SAMPLE_SIZE = 32;
@@ -123,11 +125,90 @@ function resolveFfmpegPath() {
   return 'ffmpeg';
 }
 
+function hasCommand(command) {
+  const lookupCommand = process.platform === 'win32' ? 'where' : 'which';
+
+  try {
+    const result = spawnSync(lookupCommand, [command], { encoding: 'utf8' });
+    return result.status === 0 && Boolean(String(result.stdout || '').trim());
+  } catch {
+    return false;
+  }
+}
+
+function resolveFfplayPath() {
+  if (process.env.FFPLAY_PATH) {
+    return String(process.env.FFPLAY_PATH).trim();
+  }
+
+  if (hasCommand('ffplay')) {
+    return 'ffplay';
+  }
+
+  return '';
+}
+
+function resolveSwitchAudioSourcePath() {
+  if (process.platform !== 'darwin') {
+    return '';
+  }
+
+  if (process.env.SWITCH_AUDIO_SOURCE_PATH) {
+    return String(process.env.SWITCH_AUDIO_SOURCE_PATH).trim();
+  }
+
+  if (hasCommand('SwitchAudioSource')) {
+    return 'SwitchAudioSource';
+  }
+
+  return '';
+}
+
+function getMacCurrentOutputDevice() {
+  const switchAudioSourcePath = resolveSwitchAudioSourcePath();
+  if (!switchAudioSourcePath) {
+    return '';
+  }
+
+  const result = spawnSync(switchAudioSourcePath, ['-c', '-t', 'output'], { encoding: 'utf8' });
+  if (!result || result.status !== 0) {
+    return '';
+  }
+
+  return String(result.stdout || result.stderr || '').trim();
+}
+
+function setMacOutputDevice(device) {
+  const targetDevice = String(device || '').trim();
+  if (!targetDevice) {
+    return { success: false, error: 'missing-output-device' };
+  }
+
+  const switchAudioSourcePath = resolveSwitchAudioSourcePath();
+  if (!switchAudioSourcePath) {
+    return { success: false, error: 'SwitchAudioSource-not-found' };
+  }
+
+  const result = spawnSync(switchAudioSourcePath, ['-s', targetDevice, '-t', 'output'], { encoding: 'utf8' });
+  if (!result || result.status !== 0) {
+    const errorText = String(result?.stderr || result?.stdout || '').trim();
+    return {
+      success: false,
+      error: errorText || `failed-to-switch-output-device:${targetDevice}`,
+    };
+  }
+
+  return { success: true };
+}
+
 class RecordingService {
   constructor() {
     this.activeRecordings = new Map(); // 存储活动录音的状态
     // clientId -> { proc, restarts, intentionalStop, lastRestartAt, lastSentAt }
     this.monitorProcs = new Map();
+    this.livePlaybackProc = null;
+    this.livePlaybackState = null;
+    this.livePlaybackMeta = null;
   }
 
   waitForProcessClose(proc, timeoutMs = 5000) {
@@ -175,6 +256,197 @@ class RecordingService {
     try {
       wsClientService.broadcastVolume(volumeData);
     } catch (e) { }
+  }
+
+  startLiveMicPlayback(device, outputDevice) {
+    if (process.platform !== 'darwin') {
+      return { success: false, error: 'unsupported-platform' };
+    }
+
+    if (this.livePlaybackProc) {
+      return { success: false, error: 'live-playback-already-running' };
+    }
+
+    const ffplayPath = resolveFfplayPath();
+    if (!ffplayPath) {
+      return { success: false, error: 'ffplay-not-found' };
+    }
+
+    if (this.livePlaybackMeta?.restartTimer) {
+      clearTimeout(this.livePlaybackMeta.restartTimer);
+      this.livePlaybackMeta.restartTimer = null;
+    }
+
+    const targetOutputDevice = String(outputDevice || '').trim();
+    const previousOutputDevice = targetOutputDevice ? getMacCurrentOutputDevice() : '';
+    if (targetOutputDevice) {
+      const switchResult = setMacOutputDevice(targetOutputDevice);
+      if (!switchResult.success) {
+        return { success: false, error: switchResult.error };
+      }
+    }
+
+    const inputDevice = normalizeAvfoundationAudioDevice(device);
+    const args = [
+      '-hide_banner',
+      '-loglevel', 'error',
+      '-nodisp',
+      '-autoexit',
+      '-f', 'avfoundation',
+      '-i', inputDevice,
+    ];
+
+    const meta = {
+      device: inputDevice,
+      outputDevice: targetOutputDevice,
+      previousOutputDevice,
+      intentionalStop: false,
+      restarts: 0,
+      restartTimer: null,
+      startedAt: new Date().toISOString(),
+    };
+
+    this.livePlaybackMeta = meta;
+
+    const spawnLivePlayback = () => {
+      if (meta.intentionalStop) {
+        return;
+      }
+
+      try {
+        logger.info(`Starting live mic playback: ${ffplayPath} ${args.join(' ')}`, 'startLiveMicPlayback');
+        const proc = spawn(ffplayPath, args, { stdio: ['ignore', 'ignore', 'pipe'] });
+        this.livePlaybackProc = proc;
+        this.livePlaybackState = {
+          device: inputDevice,
+          startedAt: meta.startedAt,
+        };
+
+        proc.on('exit', (code, signal) => {
+          if (this.livePlaybackProc === proc) {
+            this.livePlaybackProc = null;
+          }
+
+          if (meta.intentionalStop) {
+            this.livePlaybackState = null;
+            if (meta.previousOutputDevice && meta.outputDevice) {
+              try {
+                setMacOutputDevice(meta.previousOutputDevice);
+              } catch (e) { }
+            }
+            return;
+          }
+
+          meta.restarts += 1;
+          logger.warning(`live mic playback exited (code=${code}, signal=${signal}); restarting (#${meta.restarts})`, 'startLiveMicPlayback');
+          meta.restartTimer = setTimeout(() => {
+            if (!meta.intentionalStop) {
+              spawnLivePlayback();
+            }
+          }, Math.min(1000 * meta.restarts, 3000));
+        });
+
+        proc.on('error', (err) => {
+          logger.error(err instanceof Error ? err : `live mic playback spawn error: ${String(err)}`, 'startLiveMicPlayback');
+          if (this.livePlaybackProc === proc) {
+            this.livePlaybackProc = null;
+          }
+          if (meta.previousOutputDevice && meta.outputDevice) {
+            try {
+              setMacOutputDevice(meta.previousOutputDevice);
+            } catch (e) { }
+          }
+          if (!meta.intentionalStop) {
+            meta.restarts += 1;
+            meta.restartTimer = setTimeout(() => {
+              if (!meta.intentionalStop) {
+                spawnLivePlayback();
+              }
+            }, Math.min(1000 * meta.restarts, 3000));
+          }
+        });
+
+        proc.stderr.on('data', (chunk) => {
+          if (!RECORDING_LIVE_DEBUG) {
+            return;
+          }
+
+          const text = String(chunk || '').trim();
+          if (text) {
+            logger.warning(`[live-mic-playback] ${text}`, 'startLiveMicPlayback');
+          }
+        });
+
+        return { success: true, data: this.livePlaybackState };
+      } catch (error) {
+        logger.error(error instanceof Error ? error : `live mic playback failed: ${String(error)}`, 'startLiveMicPlayback');
+        this.livePlaybackProc = null;
+        this.livePlaybackState = null;
+        if (meta.previousOutputDevice && meta.outputDevice) {
+          try {
+            setMacOutputDevice(meta.previousOutputDevice);
+          } catch (e) { }
+        }
+        return { success: false, error: error.message || 'live-mic-playback-failed' };
+      }
+    };
+
+    return spawnLivePlayback();
+  }
+
+  stopLiveMicPlayback() {
+    if (!this.livePlaybackProc) {
+      if (this.livePlaybackMeta?.restartTimer) {
+        clearTimeout(this.livePlaybackMeta.restartTimer);
+        this.livePlaybackMeta.restartTimer = null;
+      }
+      if (this.livePlaybackMeta?.previousOutputDevice && this.livePlaybackMeta?.outputDevice) {
+        try {
+          setMacOutputDevice(this.livePlaybackMeta.previousOutputDevice);
+        } catch (e) { }
+      }
+      this.livePlaybackMeta = null;
+      this.livePlaybackState = null;
+      return { success: true, data: { stopped: false, reason: 'not-running' } };
+    }
+
+    if (this.livePlaybackMeta?.restartTimer) {
+      clearTimeout(this.livePlaybackMeta.restartTimer);
+      this.livePlaybackMeta.restartTimer = null;
+    }
+    if (this.livePlaybackMeta) {
+      this.livePlaybackMeta.intentionalStop = true;
+    }
+
+    const proc = this.livePlaybackProc;
+    this.livePlaybackProc = null;
+    this.livePlaybackState = null;
+    const restoreOutputDevice = this.livePlaybackMeta?.previousOutputDevice && this.livePlaybackMeta?.outputDevice
+      ? this.livePlaybackMeta.previousOutputDevice
+      : '';
+    this.livePlaybackMeta = null;
+
+    try {
+      if (proc.stdin && !proc.stdin.destroyed) {
+        proc.stdin.write('q');
+      }
+    } catch {
+      // ignore
+    }
+
+    try {
+      proc.kill('SIGKILL');
+    } catch {
+      // ignore
+    }
+
+    if (restoreOutputDevice) {
+      try {
+        setMacOutputDevice(restoreOutputDevice);
+      } catch (e) { }
+    }
+
+    return { success: true, data: { stopped: true } };
   }
 
   // 开始录音
@@ -318,6 +590,17 @@ class RecordingService {
       logger.error(err instanceof Error ? err : `ffmpeg spawn error: ${String(err)}`, 'startRecordingWithFfmpeg');
     });
 
+    ff.stderr.on('data', (chunk) => {
+      if (!RECORDING_OUTPUT_DEBUG) {
+        return;
+      }
+
+      const text = String(chunk || '').trim();
+      if (text) {
+        logger.info(`[recording-output] ${text}`, 'startRecordingWithFfmpeg');
+      }
+    });
+
     recordingInfo.ffmpegProc = ff;
     this.activeRecordings.set(fileName, recordingInfo);
 
@@ -414,9 +697,9 @@ class RecordingService {
             const now = Date.now();
             const clamped = Math.max(-60, Math.min(0, dbValue));
             const normalized = Math.round((1 - (clamped / -60)) * 100);
-            if(FFMPEG_DEBUG)
-              logger.info(`[ffmpeg-monitor-${source}] volume=${normalized} rawDb=${dbValue.toFixed(6)}`, 'handleMonitorOutput');
-
+            if (RECORDING_VOLUME_DEBUG) {
+                logger.info(`[ffmpeg-monitor-${source}] rawDb=${dbValue.toFixed(6)} normalized=${normalized} clientId=${clientId}`, 'handleMonitorOutput');
+            }
             if (normalized === 0 && meta.lastSentVolume === 0) {
               return;
             }

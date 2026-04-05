@@ -712,6 +712,46 @@ const openApiSpec = {
         }
       }
     },
+    '/v1/recording/start-live-mic-playback': {
+      post: {
+        tags: ['Live'],
+        summary: '启动 macOS 实时监听（麦克风直出系统扬声器）',
+        requestBody: {
+          required: false,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  device: { type: 'string', example: ':2', description: 'macOS avfoundation 输入设备索引或设备名' }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          200: {
+            description: '实时监听启动成功',
+            content: {
+              'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, data: { type: 'object' } } } }
+            }
+          },
+          400: { description: '启动失败', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
+          500: { description: '启动失败', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        }
+      }
+    },
+    '/v1/recording/stop-live-mic-playback': {
+      post: {
+        tags: ['Live'],
+        summary: '停止 macOS 实时监听',
+        responses: {
+          200: { description: '停止成功', content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessFlag' } } } },
+          400: { description: '停止失败', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
+          500: { description: '停止失败', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        }
+      }
+    },
     '/v1/recording/recording-status': {
       get: {
         tags: ['Live'],
