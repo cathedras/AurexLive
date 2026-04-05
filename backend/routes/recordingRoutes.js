@@ -14,6 +14,333 @@ if (!fs.existsSync(recordingDir)) {
   fs.mkdirSync(recordingDir, { recursive: true });
 }
 
+const DEVICE_KIND = {
+  VIRTUAL: 'virtual',
+  BUILT_IN: 'built-in',
+  EXTERNAL: 'external',
+  MONITOR: 'monitor',
+  UNKNOWN: 'unknown',
+};
+
+const VIRTUAL_DEVICE_PATTERNS = [
+  /black\s?hole/i,
+  /loopback/i,
+  /soundflower/i,
+  /vb[-\s]?cable/i,
+  /voicemeeter/i,
+  /virtual/i,
+  /aggregate/i,
+  /obs/i,
+  /wiretap/i,
+  /dante/i,
+];
+
+const BUILT_IN_DEVICE_PATTERNS = [
+  /built[-\s]?in/i,
+  /internal/i,
+  /macbook/i,
+  /imac/i,
+  /apple/i,
+  /studio display/i,
+  /display audio/i,
+];
+
+const EXTERNAL_DEVICE_PATTERNS = [
+  /usb/i,
+  /bluetooth/i,
+  /airpods/i,
+  /headset/i,
+  /microphone/i,
+  /\bmic\b/i,
+  /line in/i,
+  /thunderbolt/i,
+  /type[-\s]?c/i,
+  /focusrite/i,
+  /scarlett/i,
+  /behringer/i,
+  /yamaha/i,
+  /steinberg/i,
+  /motu/i,
+  /apollo/i,
+  /rode/i,
+  /shure/i,
+  /audio technica/i,
+];
+
+function uniqueDevicesByValue(devices) {
+  const seen = new Set();
+  return devices.filter((device) => {
+    const key = String(device?.value || '').toLowerCase();
+    if (!key || seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function buildDeviceEntry({ label, value, isDefault = false, kind = DEVICE_KIND.UNKNOWN, source = '' }) {
+  const nextLabel = String(label || value || '').trim();
+  const nextValue = String(value || nextLabel).trim();
+
+  return {
+    label: nextLabel,
+    value: nextValue,
+    isDefault: Boolean(isDefault),
+    kind,
+    source,
+  };
+}
+
+function inferDeviceKind(name, { routeType = 'input', isMonitor = false } = {}) {
+  const normalized = String(name || '').toLowerCase();
+  if (!normalized) {
+    return DEVICE_KIND.UNKNOWN;
+  }
+
+  if (routeType === 'input' && isMonitor) {
+    return DEVICE_KIND.MONITOR;
+  }
+
+  if (normalized.includes('.monitor') || /\bmonitor\b/i.test(normalized)) {
+    return routeType === 'input' ? DEVICE_KIND.MONITOR : DEVICE_KIND.VIRTUAL;
+  }
+
+  if (VIRTUAL_DEVICE_PATTERNS.some((pattern) => pattern.test(normalized))) {
+    return DEVICE_KIND.VIRTUAL;
+  }
+
+  if (BUILT_IN_DEVICE_PATTERNS.some((pattern) => pattern.test(normalized))) {
+    return DEVICE_KIND.BUILT_IN;
+  }
+
+  if (EXTERNAL_DEVICE_PATTERNS.some((pattern) => pattern.test(normalized))) {
+    return DEVICE_KIND.EXTERNAL;
+  }
+
+  return DEVICE_KIND.UNKNOWN;
+}
+
+function parseMacInputDevices(raw) {
+  const lines = String(raw || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const devices = [];
+  let inAudioSection = false;
+
+  for (const line of lines) {
+    if (/AVFoundation audio devices/i.test(line)) {
+      inAudioSection = true;
+      continue;
+    }
+
+    if (/AVFoundation video devices/i.test(line)) {
+      inAudioSection = false;
+      continue;
+    }
+
+    if (!inAudioSection) {
+      continue;
+    }
+
+    const match = line.match(/^\[(?:[^\]]*)\]\s*\[(\d+)\]\s*(.+)$/) || line.match(/^\[(\d+)\]\s*(.+)$/);
+    if (!match) {
+      continue;
+    }
+
+    const index = match[1];
+    const name = String(match[2] || '').trim();
+    if (!name) {
+      continue;
+    }
+
+    devices.push(buildDeviceEntry({
+      label: name,
+      value: `:${index}`,
+      kind: inferDeviceKind(name, { routeType: 'input' }),
+      source: 'avfoundation',
+    }));
+  }
+
+  return uniqueDevicesByValue(devices);
+}
+
+function parseWindowsInputDevices(raw) {
+  const lines = String(raw || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const devices = [];
+  let inAudioSection = false;
+
+  for (const line of lines) {
+    if (/DirectShow audio devices/i.test(line)) {
+      inAudioSection = true;
+      continue;
+    }
+
+    if (/DirectShow video devices/i.test(line)) {
+      inAudioSection = false;
+      continue;
+    }
+
+    if (!inAudioSection) {
+      continue;
+    }
+
+    const quoted = line.match(/"([^"]+)"/);
+    if (!quoted) {
+      continue;
+    }
+
+    const name = String(quoted[1] || '').trim();
+    if (!name || /alternative name/i.test(name)) {
+      continue;
+    }
+
+    devices.push(buildDeviceEntry({
+      label: name,
+      value: name,
+      kind: inferDeviceKind(name, { routeType: 'input' }),
+      source: 'dshow',
+    }));
+  }
+
+  return uniqueDevicesByValue(devices);
+}
+
+function parseLinuxInputDevices(raw) {
+  const lines = String(raw || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const devices = [];
+
+  for (const line of lines) {
+    if (/^sources:/i.test(line) || /^source #/i.test(line) || /^mixer:/i.test(line)) {
+      continue;
+    }
+
+    let name = '';
+    let source = 'alsa';
+
+    if (line.includes('\t')) {
+      const columns = line.split(/\t+/).filter(Boolean);
+      if (columns.length >= 2) {
+        name = columns[1];
+        source = 'pactl';
+      } else if (columns.length === 1) {
+        name = columns[0];
+        source = 'pactl';
+      }
+    } else {
+      const pactlMatch = line.match(/^\d+\s+([^\s]+.*)$/);
+      const alsaMatch = line.match(/^card\s+\d+:\s*.+?\[(.+?)\].*$/i) || line.match(/^device\s+\d+:\s*.+?\[(.+?)\].*$/i);
+      const wpctlMatch = line.match(/^\*?\s*\d+\.\s*(.+?)(?:\s+\[.*)?$/);
+
+      if (pactlMatch) {
+        name = pactlMatch[1].trim();
+        source = 'pactl';
+      } else if (alsaMatch) {
+        name = alsaMatch[1].trim();
+      } else if (wpctlMatch) {
+        name = wpctlMatch[1].trim();
+        source = 'wpctl';
+      }
+    }
+
+    name = String(name || '').trim();
+    if (!name) {
+      continue;
+    }
+
+    const kind = name.includes('.monitor') || /monitor/i.test(name)
+      ? DEVICE_KIND.MONITOR
+      : inferDeviceKind(name, { routeType: 'input' });
+
+    devices.push(buildDeviceEntry({
+      label: name,
+      value: name,
+      kind,
+      source,
+    }));
+  }
+
+  return uniqueDevicesByValue(devices);
+}
+
+function parseInputDevices(raw, platform) {
+  if (platform === 'darwin') {
+    return parseMacInputDevices(raw);
+  }
+
+  if (platform === 'win32') {
+    return parseWindowsInputDevices(raw);
+  }
+
+  return parseLinuxInputDevices(raw);
+}
+
+function parseWindowsOutputDevices(raw) {
+  const lines = String(raw || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const devices = [];
+
+  for (const line of lines) {
+    if (/^name$/i.test(line) || /^device$/i.test(line)) {
+      continue;
+    }
+
+    const name = String(line.replace(/^"|"$/g, '')).trim();
+    if (!name) {
+      continue;
+    }
+
+    devices.push(buildDeviceEntry({
+      label: name,
+      value: name,
+      kind: inferDeviceKind(name, { routeType: 'output' }),
+      source: 'powershell',
+    }));
+  }
+
+  return uniqueDevicesByValue(devices);
+}
+
+function parseLinuxOutputDevices(raw) {
+  const lines = String(raw || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const devices = [];
+
+  for (const line of lines) {
+    if (/^sinks:/i.test(line) || /^sink #/i.test(line) || /^available/i.test(line)) {
+      continue;
+    }
+
+    let name = '';
+    let source = 'pactl';
+
+    if (line.includes('\t')) {
+      const columns = line.split(/\t+/).filter(Boolean);
+      if (columns.length >= 2) {
+        name = columns[1];
+      } else if (columns.length === 1) {
+        name = columns[0];
+      }
+    } else {
+      const wpctlMatch = line.match(/^\*?\s*\d+\.\s*(.+?)(?:\s+\[.*)?$/);
+      if (wpctlMatch) {
+        name = wpctlMatch[1].trim();
+        source = 'wpctl';
+      }
+    }
+
+    name = String(name || '').trim();
+    if (!name) {
+      continue;
+    }
+
+    devices.push(buildDeviceEntry({
+      label: name,
+      value: name,
+      kind: inferDeviceKind(name, { routeType: 'output' }),
+      source,
+    }));
+  }
+
+  return uniqueDevicesByValue(devices);
+}
+
 // 后端启动 ffmpeg 录音并可选将 PCM/音量数据通过 SSE/事件广播
 router.post('/start-recording-backend', (req, res) => {
   try {
@@ -281,11 +608,13 @@ function parseMacOutputDevices(raw) {
     const devices = [];
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      devices.push({
+      devices.push(buildDeviceEntry({
         label: i === 0 ? `${line}（默认）` : line,
         value: line,
         isDefault: i === 0,
-      });
+        kind: inferDeviceKind(line, { routeType: 'output' }),
+        source: 'switchaudiosource',
+      }));
     }
     return devices;
   }
@@ -300,11 +629,13 @@ function parseMacOutputDevices(raw) {
     }
 
     if (current.isOutput) {
-      devices.push({
+      devices.push(buildDeviceEntry({
         label: current.name,
         value: current.name,
         isDefault: !!current.isDefault,
-      });
+        kind: inferDeviceKind(current.name, { routeType: 'output' }),
+        source: 'system_profiler',
+      }));
     }
 
     current = null;
@@ -346,15 +677,19 @@ function parseMacOutputDevices(raw) {
 
   pushCurrent();
 
-  const seen = new Set();
-  return devices.filter((device) => {
-    const key = String(device.value || '').toLowerCase();
-    if (!key || seen.has(key)) {
-      return false;
-    }
-    seen.add(key);
-    return true;
-  });
+  return uniqueDevicesByValue(devices);
+}
+
+function parseOutputDevices(raw, platform) {
+  if (platform === 'darwin') {
+    return parseMacOutputDevices(raw);
+  }
+
+  if (platform === 'win32') {
+    return parseWindowsOutputDevices(raw);
+  }
+
+  return parseLinuxOutputDevices(raw);
 }
 
 // 列出可用输入音频设备（基于 ffmpeg / platform probes）
@@ -362,7 +697,8 @@ router.get(['/list-input-devices', '/list-devices'], (req, res) => {
   try {
     const platform = process.platform;
     const raw = listInputDevicesRaw(platform);
-    res.json({ success: true, platform, deviceType: 'input', raw });
+    const devices = parseInputDevices(raw, platform);
+    res.json({ success: true, platform, deviceType: 'input', devices, raw });
   } catch (error) {
     res.status(500).json({ success: false, message: '列出输入设备失败', error: error.message });
   }
@@ -373,7 +709,7 @@ router.get('/list-output-devices', (req, res) => {
   try {
     const platform = process.platform;
     const raw = listOutputDevicesRaw(platform);
-    const devices = platform === 'darwin' ? parseMacOutputDevices(raw) : [];
+    const devices = parseOutputDevices(raw, platform);
     const includeRaw = String(req.query?.debug || '') === '1';
     res.json({
       success: true,

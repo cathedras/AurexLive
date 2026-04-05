@@ -16,11 +16,26 @@ const RECORDING_LIVE_DEBUG = process.env.RECORDING_LIVE_DEBUG === '1';
 // Smaller blocks produce faster RMS updates, but increase ffmpeg/WS traffic.
 const ASTATS_SAMPLE_SIZE = 32;
 const VOLUME_UPDATE_RATE_MS = 8;
+const SILENCE_HEARTBEAT_MS = 150;
 
 // ffmpeg args for a null-output astats/ametadata monitor (used to extract RMS levels)
 // -nostats disables the default progress output (size/time/speed)
 // asetnsamples reduces the audio block size so metadata is emitted with lower latency
 const ASTATS_MONITOR_ARGS = ['-hide_banner', '-nostats', '-map', '0:a', '-af', `asetnsamples=n=${ASTATS_SAMPLE_SIZE}:pad=1,astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level:file=-`, '-f', 'null', '-'];
+
+function parseRmsDbValue(rawValue) {
+  const text = String(rawValue || '').trim().toLowerCase();
+  if (text === '-inf' || text === '-infinity') {
+    return -60;
+  }
+
+  if (text === 'inf' || text === 'infinity') {
+    return 0;
+  }
+
+  const parsed = Number.parseFloat(text);
+  return Number.isFinite(parsed) ? parsed : null;
+}
 
 function normalizeAvfoundationAudioDevice(device) {
   if (!device || device === 'default') {
@@ -488,6 +503,11 @@ class RecordingService {
     const fileName = outFileName || `recording-${timestamp}.flac`;
     const filePath = path.join(recordingDir, fileName);
 
+    logger.info(
+      `startRecordingWithFfmpeg requested: fileName=${fileName} clientId=${clientId ?? 'null'} outFileName=${outFileName ?? 'null'}`,
+      'startRecordingWithFfmpeg'
+    );
+
     if (!fs.existsSync(recordingDir)) {
       fs.mkdirSync(recordingDir, { recursive: true });
     }
@@ -604,6 +624,11 @@ class RecordingService {
     recordingInfo.ffmpegProc = ff;
     this.activeRecordings.set(fileName, recordingInfo);
 
+    logger.info(
+      `startRecordingWithFfmpeg registered active recording: fileName=${fileName} activeCount=${this.activeRecordings.size}`,
+      'startRecordingWithFfmpeg'
+    );
+
     return { fileName, startTime: recordingInfo.startTime };
   }
 
@@ -639,9 +664,34 @@ class RecordingService {
       baseArgs = ['-f', 'alsa', '-i', linuxDev];
     }
 
-    const meta = { proc: null, restarts: 0, intentionalStop: false, lastRestartAt: 0, lastSentAt: 0, lastSentVolume: null };
+    const meta = { proc: null, restarts: 0, intentionalStop: false, lastRestartAt: 0, lastSentAt: 0, lastSentVolume: null, silenceHeartbeatTimer: null };
     const MAX_RESTARTS = 5;
     const RATE_MS = VOLUME_UPDATE_RATE_MS; // minimum ms between sent volume updates per client
+
+    const clearSilenceHeartbeat = () => {
+      if (meta.silenceHeartbeatTimer) {
+        clearInterval(meta.silenceHeartbeatTimer);
+        meta.silenceHeartbeatTimer = null;
+      }
+    };
+
+    const startSilenceHeartbeat = () => {
+      if (meta.silenceHeartbeatTimer) {
+        return;
+      }
+
+      meta.silenceHeartbeatTimer = setInterval(() => {
+        if (meta.intentionalStop || meta.lastSentVolume !== 0) {
+          clearSilenceHeartbeat();
+          return;
+        }
+
+        meta.lastSentAt = Date.now();
+        try {
+          wsClientService.sendToClient(clientId, 0);
+        } catch (e) { }
+      }, SILENCE_HEARTBEAT_MS);
+    };
 
     const spawnMonitor = () => {
       if (meta.intentionalStop) return;
@@ -677,32 +727,41 @@ class RecordingService {
       const handleMonitorOutput = (source, chunk) => {
         try {
           const text = chunk.toString();
-          const rmsPattern = /lavfi\.astats\.Overall\.RMS_level\s*=?\s*([-\d.]+)\b/g;
-          const fallbackPattern = /RMS level\s*[:=]\s*([-\d.]+)\s*dB/i;
+          const rmsPattern = /lavfi\.astats\.Overall\.RMS_level\s*=?\s*([\-\w.]+)\b/g;
+          const fallbackPattern = /RMS level\s*[:=]\s*([\-\w.]+)\s*dB/i;
           let dbValue = null;
 
           let match;
           while ((match = rmsPattern.exec(text)) !== null) {
-            dbValue = parseFloat(match[1]);
+            dbValue = parseRmsDbValue(match[1]);
           }
 
           if (dbValue === null) {
             const fallbackMatch = text.match(fallbackPattern);
             if (fallbackMatch) {
-              dbValue = parseFloat(fallbackMatch[1]);
+              dbValue = parseRmsDbValue(fallbackMatch[1]);
             }
           }
-
           if (dbValue !== null && !Number.isNaN(dbValue)) {
             const now = Date.now();
             const clamped = Math.max(-60, Math.min(0, dbValue));
-            const normalized = Math.round((1 - (clamped / -60)) * 100);
+            const normalized = Math.round(((clamped + 60) / 60) * 100);
             if (RECORDING_VOLUME_DEBUG) {
-                logger.info(`[ffmpeg-monitor-${source}] rawDb=${dbValue.toFixed(6)} normalized=${normalized} clientId=${clientId}`, 'handleMonitorOutput');
+              logger.info(`[ffmpeg-monitor-${source}] rawDb=${Number.isFinite(dbValue) ? dbValue.toFixed(6) : '0.000000'} normalized=${normalized} clientId=${clientId}`, 'handleMonitorOutput');
             }
-            if (normalized === 0 && meta.lastSentVolume === 0) {
+
+            if (normalized === 0) {
+              if (meta.lastSentVolume !== 0) {
+                meta.lastSentAt = now;
+                meta.lastSentVolume = 0;
+                try { wsClientService.sendToClient(clientId, 0); } catch (e) { }
+              }
+
+              startSilenceHeartbeat();
               return;
             }
+
+            clearSilenceHeartbeat();
 
             if (meta.lastSentVolume === normalized && now - meta.lastSentAt < 120) {
               return;
@@ -713,7 +772,7 @@ class RecordingService {
             meta.lastSentAt = now;
             meta.lastSentVolume = normalized;
             const payload = normalized;
-            try { wsClientService.sendToClient(clientId, payload); } catch (e) {}
+            try { wsClientService.sendToClient(clientId, payload); } catch (e) { }
           }
         } catch (e) { }
       };
@@ -723,6 +782,7 @@ class RecordingService {
 
       ff.on('exit', (code, sig) => {
         meta.proc = null;
+        clearSilenceHeartbeat();
         if (meta.intentionalStop) {
           this.monitorProcs.delete(clientId);
           return;
@@ -761,40 +821,57 @@ class RecordingService {
     const meta = this.monitorProcs.get(clientId);
     if (!meta) return { success: false, error: 'no-monitor' };
     meta.intentionalStop = true;
+    if (meta.silenceHeartbeatTimer) {
+      clearInterval(meta.silenceHeartbeatTimer);
+      meta.silenceHeartbeatTimer = null;
+    }
     try {
       if (meta.proc && meta.proc.stdin && !meta.proc.stdin.destroyed) {
         meta.proc.stdin.write('q');
       }
-    } catch (e) {}
-    try { if (meta.proc) meta.proc.kill('SIGKILL'); } catch (e) {}
+    } catch (e) { }
+    try { if (meta.proc) meta.proc.kill('SIGKILL'); } catch (e) { }
     this.monitorProcs.delete(clientId);
     return { success: true };
   }
 
   // 停止录音
   async stopRecording(fileName) {
+    logger.info(`stopRecording requested: fileName=${fileName}`, 'stopRecording');
     const recordingInfo = this.activeRecordings.get(fileName);
     if (!recordingInfo) {
+      const filePath = path.join(recordingDir, fileName);
+      if (fs.existsSync(filePath)) {
+        const stats = fs.statSync(filePath);
+        logger.warning(`stopRecording called for inactive recording ${fileName}; returning existing file info`, 'stopRecording');
+        return {
+          fileName,
+          filePath,
+          duration: 0,
+          size: stats.size,
+          alreadyStopped: true,
+        };
+      }
+
+      logger.warning(
+        `stopRecording miss: fileName=${fileName} activeCount=${this.activeRecordings.size}`,
+        'stopRecording'
+      );
       throw new Error(`录音 ${fileName} 不存在或未激活`);
     }
 
     const clientId = recordingInfo.clientId;
 
     if (clientId !== null && clientId !== undefined) {
-      try {
-        this.stopVolumeMonitor(clientId);
-      } catch (e) { }
+      this.stopVolumeMonitor(clientId);
     }
 
     // If ffmpeg process is active for this recording, try graceful shutdown
     if (recordingInfo.ffmpegProc) {
-      try {
-        // Try to ask ffmpeg to quit gracefully
-        if (recordingInfo.ffmpegProc.stdin && !recordingInfo.ffmpegProc.stdin.destroyed) {
-          recordingInfo.ffmpegProc.stdin.write('q');
-        }
-      } catch (e) { }
-
+      // Try to ask ffmpeg to quit gracefully
+      if (recordingInfo.ffmpegProc.stdin && !recordingInfo.ffmpegProc.stdin.destroyed) {
+        recordingInfo.ffmpegProc.stdin.write('q');
+      }
       await this.waitForProcessClose(recordingInfo.ffmpegProc, 5000);
     }
 

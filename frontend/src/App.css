@@ -498,7 +498,7 @@ h1 {
 .recorder-controls-toolbar {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   gap: 14px;
   flex-wrap: nowrap;
   width: 100%;
@@ -506,6 +506,28 @@ h1 {
   padding-bottom: 4px;
 }
 
+.recorder-controls-toolbar-actions {
+  flex: 0 1 60%;
+  max-width: 60%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 14px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.recording-status-lines {
+  flex: 0 1 40%;
+  max-width: 40%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  text-align: left;
+}
 .recorder-controls-devices {
   display: grid;
   grid-template-columns: repeat(2, minmax(260px, 1fr));
@@ -530,6 +552,34 @@ h1 {
   border: 1px solid #07c160;
   background: #07c160;
   color: #fff;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease, filter 0.18s ease;
+}
+
+.recorder-btn:disabled {
+  background-color: #e2e8f0;
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgba(148, 163, 184, 0.14) 0,
+    rgba(148, 163, 184, 0.14) 8px,
+    rgba(148, 163, 184, 0.05) 8px,
+    rgba(148, 163, 184, 0.05) 16px
+  );
+  border-color: #cbd5e1;
+  color: #94a3b8;
+  cursor: not-allowed;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  filter: grayscale(0.3) saturate(0.55);
+  opacity: 1;
+  transform: none;
+}
+
+.recorder-btn:disabled:hover {
+  transform: none;
+}
+
+.recorder-btn:disabled .row-icon-btn-graphic,
+.recorder-btn:disabled svg {
+  opacity: 0.72;
 }
 
 .recorder-btn.recording {
@@ -537,6 +587,17 @@ h1 {
   border-color: #c14a4a;
   color: #fff;
   min-width: 120px;
+}
+
+.recorder-btn.monitoring {
+  background: linear-gradient(180deg, #f59e0b 0%, #d97706 100%);
+  border-color: #c76a04;
+  color: #fff;
+  min-width: 130px;
+}
+
+.recorder-btn.monitoring:hover:not(:disabled) {
+  background: linear-gradient(180deg, #fbbf24 0%, #ea8f07 100%);
 }
 
 .recorder-btn-live {
@@ -580,6 +641,78 @@ h1 {
     min-width: 0;
     width: auto;
   }
+}
+
+.recorder-status-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  text-align: left;
+}
+
+.recorder-status-label {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 3px 8px;
+  border-radius: 999px;
+  margin-top: 1px;
+}
+
+.recorder-status-message {
+  flex: 1 1 auto;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.recorder-status-success {
+  background: #f0fff8;
+  border-color: #cdeedb;
+  color: #0b7a47;
+}
+
+.recorder-status-success .recorder-status-label {
+  background: #0b7a47;
+  color: #fff;
+}
+
+.recorder-status-warning {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #9a3412;
+}
+
+.recorder-status-warning .recorder-status-label {
+  background: #d97706;
+  color: #fff;
+}
+
+.recorder-status-error {
+  background: #fff6f6;
+  border-color: #f2d8d8;
+  color: #c14a4a;
+}
+
+.recorder-status-error .recorder-status-label {
+  background: #c14a4a;
+  color: #fff;
+}
+
+.recorder-status-info {
+  background: #f8fafc;
+  border-color: #dbe4f0;
+  color: #475569;
+}
+
+.recorder-status-info .recorder-status-label {
+  background: #64748b;
+  color: #fff;
 }
 
 .recorder-error {
@@ -2264,12 +2397,36 @@ a.btn-play.home-link-btn {
 .recorder-controls-toolbar {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   gap: 14px;
   flex-wrap: nowrap;
   width: 100%;
   overflow-x: auto;
   padding-bottom: 4px;
+}
+
+.recorder-controls-toolbar-actions {
+  flex: 0 1 60%;
+  max-width: 60%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.recording-status-lines {
+  flex: 0 1 40%;
+  max-width: 40%;
+  min-width: 0;
+  margin-left: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  text-align: left;
 }
 
 .recorder-controls-devices {
@@ -2329,6 +2486,17 @@ a.btn-play.home-link-btn {
   color: #07c160;
   font-weight: 600;
   font-size: 16px;
+}
+
+.recording-file-name {
+  color: #07c160;
+  font-weight: 600;
+  font-size: 14px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .volume-visualizer-card {
@@ -2536,6 +2704,18 @@ a.btn-play.home-link-btn-secondary:hover {
   color: #007bff;
 }
 
+.recording-checkbox-auto {
+  color: #b45309;
+}
+
+.recording-auto-wrap {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
 .recording-checkbox input[type="checkbox"] {
   position: absolute;
   opacity: 0;
@@ -2585,6 +2765,20 @@ a.btn-play.home-link-btn-secondary:hover {
 .recording-checkbox input[type="checkbox"]:disabled ~ span {
   color: #6c757d;
   cursor: not-allowed;
+}
+
+.recording-auto-note {
+  width: 100%;
+  max-width: 860px;
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid #fed7aa;
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: left;
 }
 
 /* WS 连接状态指示器 */
@@ -2697,9 +2891,23 @@ a.btn-play.home-link-btn-secondary:hover {
 }
 
 .recording-select:disabled {
-  background-color: #e9ecef;
+  background-color: #e2e8f0;
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgba(148, 163, 184, 0.12) 0,
+    rgba(148, 163, 184, 0.12) 8px,
+    rgba(148, 163, 184, 0.04) 8px,
+    rgba(148, 163, 184, 0.04) 16px
+  ),
+  url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2394a3b8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
+  background-repeat: repeat, no-repeat;
+  background-position: 0 0, right 0.5rem center;
+  background-size: auto, 1.5em 1.5em;
+  border-color: #cbd5e1;
+  color: #94a3b8;
   cursor: not-allowed;
-  opacity: 0.65;
+  opacity: 1;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
 }
 
 .recording-select:hover:not(:disabled) {

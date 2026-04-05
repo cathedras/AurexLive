@@ -60,9 +60,9 @@ export const deleteRecording = async (filename) => {
   }
 }
 
-export const startRecordingBackend = async ({ clientId, device } = {}) => {
+export const startRecordingBackend = async ({ clientId, device, outFileName } = {}) => {
   try {
-    return await apiPost(`${BASE_URL}/start-recording-backend`, { clientId, device })
+    return await apiPost(`${BASE_URL}/start-recording-backend`, { clientId, device, outFileName })
   } catch (error) {
     console.error('后端开始录音失败:', error)
     throw error
