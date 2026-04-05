@@ -272,6 +272,29 @@ const openApiSpec = {
             raw: { type: 'string', example: 'AVFoundation audio devices:' }
           }
         },
+        SwitchOutputDeviceRequest: {
+          type: 'object',
+          required: ['device'],
+          properties: {
+            device: { type: 'string', example: 'BlackHole 2ch' }
+          }
+        },
+        SwitchOutputDeviceResponse: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean', example: true },
+            data: {
+              type: 'object',
+              properties: {
+                success: { type: 'boolean', example: true },
+                platform: { type: 'string', example: 'darwin' },
+                device: { type: 'string', example: 'BlackHole 2ch' },
+                stdout: { type: 'string', example: '' },
+                stderr: { type: 'string', example: '' }
+              }
+            }
+          }
+        },
         ConversionJobRequest: {
           type: 'object',
           properties: {
@@ -783,16 +806,72 @@ const openApiSpec = {
         }
       }
     },
-    '/v1/recording/list-devices': {
+    '/v1/recording/list-input-devices': {
       get: {
         tags: ['Live'],
-        summary: '列出可用音频设备',
+        summary: '列出可用输入音频设备',
         responses: {
           200: {
             description: '读取成功',
             content: {
               'application/json': {
                 schema: { $ref: '#/components/schemas/DeviceListResponse' }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/v1/recording/list-output-devices': {
+      get: {
+        tags: ['Live'],
+        summary: '列出可用输出音频设备',
+        responses: {
+          200: {
+            description: '读取成功',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/DeviceListResponse' }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/v1/recording/switch-output-device': {
+      post: {
+        tags: ['Live'],
+        summary: '切换系统输出设备',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/SwitchOutputDeviceRequest' }
+            }
+          }
+        },
+        responses: {
+          200: {
+            description: '切换成功',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/SwitchOutputDeviceResponse' }
+              }
+            }
+          },
+          400: {
+            description: '参数错误或平台不支持',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
+              }
+            }
+          },
+          500: {
+            description: '切换失败',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' }
               }
             }
           }

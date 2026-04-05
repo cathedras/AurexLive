@@ -22,14 +22,34 @@ export const getRecordingList = async () => {
   }
 }
 
-export const listRecordingDevices = async () => {
+export const listInputDevices = async () => {
   try {
-    return await apiGet(`${BASE_URL}/list-devices`)
+    return await apiGet(`${BASE_URL}/list-input-devices`)
   } catch (error) {
-    console.error('列出设备失败:', error)
+    console.error('列出输入设备失败:', error)
     throw error
   }
 }
+
+export const listOutputDevices = async () => {
+  try {
+    return await apiGet(`${BASE_URL}/list-output-devices`)
+  } catch (error) {
+    console.error('列出输出设备失败:', error)
+    throw error
+  }
+}
+
+export const switchOutputDevice = async (device) => {
+  try {
+    return await apiPost(`${BASE_URL}/switch-output-device`, { device })
+  } catch (error) {
+    console.error('切换输出设备失败:', error)
+    throw error
+  }
+}
+
+export const listRecordingDevices = listInputDevices
 
 export const deleteRecording = async (filename) => {
   try {

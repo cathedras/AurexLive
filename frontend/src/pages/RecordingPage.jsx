@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 
 import { useFloatingAudioPlayer } from '../component/FloatingAudioPlayer'
 import Modal from '../component/Modal'
-import { deleteRecording, getRecordingList, startRecordingBackend, stopRecordingBackend, useRecording } from '../services/musicPlay'
+import { deleteRecording, getRecordingList, startRecordingBackend, stopRecordingBackend, switchOutputDevice, useRecording } from '../services/musicPlay'
 import wsClientService from '../services/wsClientService'
 
 const RecordingPage = () => {
@@ -21,6 +21,9 @@ const RecordingPage = () => {
   const [enableVolumeWs, setEnableVolumeWs] = useState(false);
   const [devices, setDevices] = useState([]);
   const [selectedDevice, setSelectedDevice] = useState(null);
+  const [outputDevices, setOutputDevices] = useState([]);
+  const [selectedOutputDevice, setSelectedOutputDevice] = useState(null);
+  const [switchingOutputDevice, setSwitchingOutputDevice] = useState(false);
   const [ws, setWs] = useState(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -114,10 +117,11 @@ const RecordingPage = () => {
   useEffect(() => {
     loadRecordings();
 
-    // fetch available devices from backend for platform-appropriate selection
+    // fetch available input/output devices from backend for platform-appropriate selection
     (async () => {
       try {
-        const devRes = await (await import('../services/musicPlay')).listRecordingDevices();
+        const musicPlay = await import('../services/musicPlay');
+        const devRes = await musicPlay.listInputDevices();
         if (devRes && devRes.success) {
           const raw = devRes.raw || '';
           const plat = devRes.platform || '';
@@ -174,6 +178,28 @@ const RecordingPage = () => {
             }
 
             setSelectedDevice(defaultDevice);
+          }
+        }
+
+        const outRes = await musicPlay.listOutputDevices();
+        if (outRes && outRes.success) {
+          const structured = Array.isArray(outRes.devices) ? outRes.devices : [];
+          let parsed = structured.map((item) => ({
+            label: item.isDefault ? `${item.label}（默认）` : item.label,
+            value: item.value,
+          }));
+
+          if (parsed.length === 0) {
+            const raw = outRes.raw || '';
+            const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+            parsed = lines
+              .filter((line) => !/^audio:$/i.test(line) && !/^devices:$/i.test(line))
+              .map((l, i) => ({ label: l.length > 120 ? `${l.substring(0, 120)}…` : l, value: l || String(i) }));
+          }
+
+          setOutputDevices(parsed);
+          if (parsed.length) {
+            setSelectedOutputDevice(parsed.find((d) => /默认/.test(d.label))?.value || parsed[0].value);
           }
         }
       } catch (e) {
@@ -460,6 +486,25 @@ const RecordingPage = () => {
     }
   };
 
+    const handleOutputDeviceChange = async (event) => {
+      const nextDevice = event.target.value;
+      const previousDevice = selectedOutputDevice;
+      setSelectedOutputDevice(nextDevice);
+
+      try {
+        setSwitchingOutputDevice(true);
+        const result = await switchOutputDevice(nextDevice);
+        if (!result || !result.success) {
+          throw new Error((result && result.message) || '切换输出设备失败');
+        }
+      } catch (err) {
+        setSelectedOutputDevice(previousDevice);
+        setError(`切换输出设备失败: ${err.message}`);
+      } finally {
+        setSwitchingOutputDevice(false);
+      }
+    };
+
   // 播放录音
   const { openFloatingPlayer } = useFloatingAudioPlayer()
 
@@ -530,6 +575,15 @@ const RecordingPage = () => {
               {devices.length === 0 && <option value="">默认设备</option>}
               {devices.map((d, idx) => (
                 <option key={idx} value={d.value}>{d.label.length > 120 ? d.label.substring(0, 120) + '…' : d.label}</option>
+              ))}
+            </select>
+          </div>
+          <div style={{ marginLeft: 12 }}>
+            <label style={{ display: 'block', fontSize: 12, marginBottom: 6 }}>选择输出设备</label>
+            <select value={selectedOutputDevice || ''} onChange={handleOutputDeviceChange} disabled={isRecording || loading || switchingOutputDevice}>
+              {outputDevices.length === 0 && <option value="">默认输出</option>}
+              {outputDevices.map((d, idx) => (
+                <option key={idx} value={d.value}>{d.label}</option>
               ))}
             </select>
           </div>
