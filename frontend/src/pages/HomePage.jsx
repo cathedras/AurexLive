@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import {
@@ -14,66 +14,10 @@ function HomePage() {
   const [marqueeSpeedSec, setMarqueeSpeedSec] = useState(16)
   const [autoPlayEnabled, setAutoPlayEnabled] = useState(true)
   const [mobileLinks, setMobileLinks] = useState(null)
-  const [cameraStreamActive, setCameraStreamActive] = useState(false)
-  const [cameraStreamStatus, setCameraStreamStatus] = useState('connecting')
-  const [cameraStreamEnabled, setCameraStreamEnabled] = useState(true)
-  const [cameraPreviewSrc, setCameraPreviewSrc] = useState('')
-  const cameraStreamTimeoutRef = useRef(null)
-  const cameraStreamImageRef = useRef(null)
 
   useEffect(() => {
     fetchPageData()
   }, [])
-
-  useEffect(() => {
-    if (cameraStreamTimeoutRef.current) {
-      clearTimeout(cameraStreamTimeoutRef.current)
-    }
-
-    if (!cameraStreamEnabled) {
-      return undefined
-    }
-
-    cameraStreamTimeoutRef.current = setTimeout(() => {
-      setCameraStreamEnabled(false)
-      setCameraStreamActive(false)
-      setCameraStreamStatus('disconnected')
-    }, 10000)
-
-    return () => {
-      if (cameraStreamTimeoutRef.current) {
-        clearTimeout(cameraStreamTimeoutRef.current)
-        cameraStreamTimeoutRef.current = null
-      }
-    }
-  }, [cameraStreamEnabled])
-
-  const captureFirstFrameAndCloseStream = () => {
-    try {
-      const image = cameraStreamImageRef.current
-      if (image && image.naturalWidth > 0 && image.naturalHeight > 0) {
-        const canvas = document.createElement('canvas')
-        canvas.width = image.naturalWidth
-        canvas.height = image.naturalHeight
-        const context = canvas.getContext('2d')
-        if (context) {
-          context.drawImage(image, 0, 0)
-          setCameraPreviewSrc(canvas.toDataURL('image/png'))
-        }
-      }
-    } catch {
-      // 如果截图失败，仍然关闭流，避免首页一直挂着请求
-    }
-
-    if (cameraStreamTimeoutRef.current) {
-      clearTimeout(cameraStreamTimeoutRef.current)
-      cameraStreamTimeoutRef.current = null
-    }
-
-    setCameraStreamActive(true)
-    setCameraStreamStatus('connected')
-    setCameraStreamEnabled(false)
-  }
 
   const fetchPageData = async () => {
     await Promise.all([fetchCurrentState(), fetchUserSettings(), fetchMobileLinks()])
@@ -163,32 +107,18 @@ function HomePage() {
               自动播放：{autoPlayEnabled ? '已开启' : '已关闭'}
             </div>
             <div className="live-video-wrap">
-              <div className={`live-stream-status live-stream-status-${cameraStreamStatus}`}>
-                {cameraStreamStatus === 'connected' ? '已连接' : cameraStreamStatus === 'disconnected' ? '已断开' : '连接中'}
+              <div className="live-video-toolbar">
+                <div className="live-video-toolbar-tip">
+                  实时画面已切换为 WebRTC 预览链路，不再使用 MJPEG / 帧流。
+                </div>
+                <Link to="/page/live-stream" className="home-link-btn home-link-btn-secondary">
+                  打开直播发布页
+                </Link>
               </div>
-                {cameraPreviewSrc ? (
-                  <img src={cameraPreviewSrc} alt="手机摄像头首帧预览" className="live-video-image" />
-                ) : !cameraStreamActive ? (
-                  <img src="/live-placeholder.svg" alt="视频直播窗口占位图" className="live-video-image" />
-                ) : null}
-                {cameraStreamEnabled && (
-                  <img
-                    ref={cameraStreamImageRef}
-                    //src="/v1/live/camera-stream"
-                    alt="手机摄像头实时回传画面"
-                    className={`live-video-image ${cameraPreviewSrc ? 'live-video-image-hidden' : ''}`}
-                    onLoad={captureFirstFrameAndCloseStream}
-                    onError={() => {
-                      if (cameraStreamTimeoutRef.current) {
-                        clearTimeout(cameraStreamTimeoutRef.current)
-                        cameraStreamTimeoutRef.current = null
-                      }
-                      setCameraStreamEnabled(false)
-                      setCameraStreamActive(false)
-                      setCameraStreamStatus('disconnected')
-                    }}
-                  />
-                )}
+
+              <div className="home-live-placeholder">
+                需要查看实时画面时，请先在直播发布页启动推流，再打开内网预览页。
+              </div>
             </div>
             <div className="program-marquee-wrap" aria-label="当前节目滚动展示" style={{ '--home-marquee-speed': `${Math.max(6, marqueeSpeedSec - 2)}s` }}>
               <div className="program-marquee-track">

@@ -37,6 +37,7 @@ const mobileRoutes = require('./routes/mobileRoutes');
 const clientErrorRoutes = require('./routes/clientErrorRoutes');
 const recordingRoutes = require('./routes/recordingRoutes'); // 引入录音路由
 const recordingFilesRoutes = require('./routes/recordingFilesRoutes');
+const webrtcRoutes = require('./routes/webrtcRoutes');
 // debugRoutes removed for unit tests
 const musicPlaybackService = require('./services/musicPlaybackService');
 const requestLogger = require('./middleware/requestLogger');
@@ -62,8 +63,33 @@ if (fs.existsSync(generatedSpecPath)) {
 const app = express();
 const server = http.createServer(app);
 const port = process.env.PORT || 3000;
-const frontendDevServerUrl = process.env.FRONTEND_DEV_SERVER_URL || 'http://localhost:5173';
+const frontendDevServerUrl = process.env.FRONTEND_DEV_SERVER_URL || 'https://localhost:5173';
 const useViteDevServer = process.env.NODE_ENV !== 'production' && process.env.USE_VITE_DEV_SERVER !== '0';
+
+function getAccessibleFrontendDevServerUrl() {
+  if (!useViteDevServer) {
+    return frontendDevServerUrl;
+  }
+
+  try {
+    const parsed = new URL(frontendDevServerUrl);
+    if (['localhost', '127.0.0.1', '::1'].includes(parsed.hostname)) {
+      const nets = os.networkInterfaces();
+      for (const name of Object.keys(nets)) {
+        for (const item of nets[name] || []) {
+          if (item.family === 'IPv4' && !item.internal) {
+            parsed.hostname = item.address;
+            return parsed.toString().replace(/\/$/, '');
+          }
+        }
+      }
+    }
+
+    return parsed.toString().replace(/\/$/, '');
+  } catch {
+    return frontendDevServerUrl;
+  }
+}
 
 // WebSocket 服务（已抽离到 backend/wsServer.js）
 const initWebSocket = require('./wsServer');
@@ -110,6 +136,7 @@ app.use('/v1/live', liveRoutes);
 app.use('/v1/mobile', mobileRoutes);
 app.use('/v1/client-error', clientErrorRoutes);
 app.use('/v1/recording', recordingRoutes); // 注册录音路由
+app.use('/v1/webrtc', webrtcRoutes);
 
 // 7. 托管上传文件和前端静态文件
 app.use('/v1/uploads', express.static(uploadDir));
@@ -121,18 +148,18 @@ const hasReactDist = fs.existsSync(reactDistDir);
 if (useViteDevServer) {
   const redirectToVite = (req, res) => {
     const targetPath = req.originalUrl || req.url || '/page';
-    res.redirect(`${frontendDevServerUrl}${targetPath}`);
+    res.redirect(`${getAccessibleFrontendDevServerUrl()}${targetPath}`);
   };
 
-  ['/','/page','/page/upload','/page/music','/page/settings','/page/recording'].forEach((routePath) => {
+  ['/','/page','/page/upload','/page/music','/page/settings','/page/recording','/page/live-stream','/page/live-preview'].forEach((routePath) => {
     app.get(routePath, redirectToVite);
   });
 
-  logger.info(`[Frontend] Vite dev server enabled, redirecting page routes to ${frontendDevServerUrl}`);
+  logger.info(`[Frontend] Vite dev server enabled, redirecting page routes to ${getAccessibleFrontendDevServerUrl()}`);
 } else if (hasReactDist) {
   app.use(express.static(reactDistDir));
 
-  ['/page','/page/upload','/page/music','/page/settings', '/page/recording'].forEach((routePath) => {
+  ['/page','/page/upload','/page/music','/page/settings', '/page/recording', '/page/live-stream', '/page/live-preview'].forEach((routePath) => {
     app.get(routePath, (req, res) => {
       res.sendFile(path.join(reactDistDir, 'index.html'));
     });
@@ -181,9 +208,7 @@ function startServer() {
     logger.info(`录音文件保存路径: ${recordingDir}`);
     logger.info(`运行时配置路径: ${runtimeConfigDir}`);
     logger.info('============================================');
-    const startupMonitor = createStartupMonitor({
-      musicPlaybackService
-    });
+    const startupMonitor = createStartupMonitor();
     startupMonitor.run();
   });
 }

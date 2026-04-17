@@ -8,8 +8,6 @@ const defaultLiveState = {
   playbackAction: 'none',
   effectCommandId: 0,
   effectName: '',
-  cameraImageData: '',
-  cameraUpdatedAt: null,
   updatedAt: null,
   backendPlayback: {
     available: false,

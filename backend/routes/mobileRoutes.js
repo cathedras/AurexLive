@@ -9,6 +9,25 @@ const {
 
 const router = express.Router();
 
+function getFrontendDevServerUrl(localIp) {
+  const configuredUrl = String(process.env.FRONTEND_DEV_SERVER_URL || 'https://localhost:5173').trim();
+
+  if (process.env.NODE_ENV === 'production' || process.env.USE_VITE_DEV_SERVER === '0') {
+    return configuredUrl;
+  }
+
+  try {
+    const parsed = new URL(configuredUrl);
+    if (['localhost', '127.0.0.1', '::1'].includes(parsed.hostname)) {
+      parsed.hostname = localIp;
+      return parsed.toString().replace(/\/$/, '');
+    }
+    return configuredUrl;
+  } catch {
+    return `https://${localIp}:5173`;
+  }
+}
+
 function getLocalIpAddress() {
   const interfaces = os.networkInterfaces();
   for (const name of Object.keys(interfaces)) {
@@ -29,7 +48,9 @@ async function buildQrDataUrl(text) {
 }
 
 router.get('/camera', (req, res) => {
-  return res.sendFile(mobileCameraHtmlPath);
+  const localIp = getLocalIpAddress();
+  const liveStreamUrl = `${getFrontendDevServerUrl(localIp)}/page/live-stream`;
+  return res.redirect(liveStreamUrl);
 });
 
 router.get('/control', (req, res) => {
@@ -40,12 +61,15 @@ router.get('/links', async (req, res) => {
   try {
     const localIp = getLocalIpAddress();
     const baseUrl = `http://${localIp}:3000`;
-    const cameraUrl = `${baseUrl}/v1/mobile/camera`;
+    const frontendBaseUrl = getFrontendDevServerUrl(localIp);
+    const cameraUrl = `${frontendBaseUrl}/page/live-stream`;
     const controlUrl = `${baseUrl}/v1/mobile/control`;
+    const liveStreamUrl = `${frontendBaseUrl}/page/live-stream`;
 
-    const [cameraQr, controlQr] = await Promise.all([
+    const [cameraQr, controlQr, liveStreamQr] = await Promise.all([
       buildQrDataUrl(cameraUrl),
-      buildQrDataUrl(controlUrl)
+      buildQrDataUrl(controlUrl),
+      buildQrDataUrl(liveStreamUrl)
     ]);
 
     return res.json({
@@ -53,11 +77,13 @@ router.get('/links', async (req, res) => {
       baseUrl,
       links: {
         camera: cameraUrl,
-        control: controlUrl
+        control: controlUrl,
+        liveStream: liveStreamUrl
       },
       qrs: {
         camera: cameraQr,
-        control: controlQr
+        control: controlQr,
+        liveStream: liveStreamQr
       }
     });
   } catch (error) {

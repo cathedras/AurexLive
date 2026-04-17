@@ -3,7 +3,6 @@ const child_process = require('child_process');
 
 function createStartupMonitor(options = {}) {
   const {
-    musicPlaybackService,
     appNames = ['monitor-worker', 'show-console'],
     maxAttempts = 3,
     retryBaseDelayMs = 2000,
@@ -11,27 +10,6 @@ function createStartupMonitor(options = {}) {
     ecosystemConfigPath = path.resolve(__dirname, '..', '..', 'ecosystem.config.js'),
     logger = console
   } = options;
-
-  if (!musicPlaybackService || typeof musicPlaybackService.restoreFromRuntimeState !== 'function') {
-    throw new Error('createStartupMonitor requires a musicPlaybackService with restoreFromRuntimeState()');
-  }
-
-  function restorePlaybackState() {
-    return musicPlaybackService
-      .restoreFromRuntimeState()
-      .then((state) => {
-        if (state.currentTrack?.programName) {
-          logger.log(`\n[Startup][Playback] 恢复播放状态成功，当前播放: ${state.currentTrack.programName}`);
-          logger.log('[Startup][Playback] 如需清理上次播放状态，请删除 runtime/ 目录下的 playback_state.json\n');
-          return;
-        }
-
-        logger.log('[Startup][Playback] 播放状态检查完成，当前没有可恢复的播放内容');
-      })
-      .catch(() => {
-        logger.warn('[Startup][Playback] 未能恢复上次播放状态，将从空闲状态开始');
-      });
-  }
 
   function fallbackStart(missingApps) {
     missingApps.forEach((app) => {
@@ -174,7 +152,7 @@ function createStartupMonitor(options = {}) {
 
   function run() {
     setTimeout(() => {
-      Promise.all([restorePlaybackState(), ensurePm2AppsRunning()])
+      Promise.all([ensurePm2AppsRunning()])
         .then(() => {
           logger.log('[Startup] 后续启动监测流程已全部完成');
         })
@@ -186,7 +164,6 @@ function createStartupMonitor(options = {}) {
 
   return {
     run,
-    restorePlaybackState,
     ensurePm2AppsRunning,
     fallbackStart
   };

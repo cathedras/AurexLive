@@ -3,6 +3,8 @@ import './App.css'
 import { FloatingAudioPlayerProvider } from './component/FloatingAudioPlayer'
 import { MusicPageApiProvider } from './context/musicPageApiContext'
 import HomePage from './pages/HomePage'
+import LiveStreamPage from './pages/LiveStreamPage'
+import LivePreviewPage from './pages/LivePreviewPage'
 import MusicPage from './pages/MusicPage'
 import SettingsPage from './pages/SettingsPage'
 import UploadPage from './pages/UploadPage'
@@ -14,6 +16,8 @@ function App() {
     <FloatingAudioPlayerProvider>
       <Routes>
         <Route path="/page" element={<HomePage />} />
+        <Route path="/page/live-stream" element={<LiveStreamPage />} />
+        <Route path="/page/live-preview" element={<LivePreviewPage />} />
         <Route path="/page/upload" element={<UploadPage />} />
         <Route
           path="/page/music"

@@ -65,6 +65,7 @@ const openApiSpec = {
       { type: 'add-chunk-result', description: 'add-chunk 命令结果。', success: true },
       { type: 'get-status-result', description: 'get-status 命令结果。', success: true, data: { type: 'object' } },
       { type: 'echo', description: 'echo/raw 的回显消息。', success: true, data: { hello: 'world' } },
+      { type: 'live-push-event', description: '手机端推流事件通知。', data: { event: 'producer-created', sessionId: '...', producerId: '...', kind: 'video', timestamp: 1679999940000 } },
       { type: 'volume', description: '音量推送事件，通常是 0-100 的整数。', data: { fileName: 'recording-2026-03-28T11-00-00-000Z.flac', volume: 42, timestamp: 1679999940000 } }
     ]
   },
@@ -194,7 +195,6 @@ const openApiSpec = {
           playbackAction: { type: 'string', example: 'play' },
           effectCommandId: { type: 'integer', example: 5 },
           effectName: { type: 'string', example: 'applause' },
-          cameraUpdatedAt: { type: 'string', format: 'date-time', nullable: true },
           updatedAt: { type: 'string', format: 'date-time' },
           backendPlayback: { $ref: '#/components/schemas/BackendPlaybackState' }
         }
@@ -353,7 +353,7 @@ const openApiSpec = {
           properties: {
             type: {
               type: 'string',
-              enum: ['clientId', 'identify-result', 'subscribe-volume-result', 'monitor-start', 'add-chunk-result', 'get-status-result', 'echo', 'volume']
+              enum: ['clientId', 'identify-result', 'subscribe-volume-result', 'monitor-start', 'add-chunk-result', 'get-status-result', 'echo', 'volume', 'live-push-event']
             },
             success: { type: 'boolean', nullable: true },
             fileName: { type: 'string', nullable: true },
@@ -1535,80 +1535,6 @@ const openApiSpec = {
                     state: { $ref: '#/components/schemas/LiveState' }
                   }
                 }
-              }
-            }
-          }
-        }
-      }
-    },
-    '/v1/live/camera-frame': {
-      get: {
-        tags: ['Live'],
-        summary: '获取最新摄像头画面',
-        responses: {
-          200: {
-            description: '读取成功',
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  properties: {
-                    success: { type: 'boolean', example: true },
-                    hasFrame: { type: 'boolean', example: true },
-                    imageData: { type: 'string', example: 'data:image/jpeg;base64,...' },
-                    updatedAt: { type: 'string', format: 'date-time', nullable: true }
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
-      post: {
-        tags: ['Live'],
-        summary: '上传最新摄像头画面',
-        requestBody: {
-          required: true,
-          content: {
-            'application/json': {
-              schema: {
-                type: 'object',
-                required: ['imageData'],
-                properties: {
-                  imageData: { type: 'string', example: 'data:image/jpeg;base64,...' }
-                }
-              }
-            }
-          }
-        },
-        responses: {
-          200: {
-            description: '上传成功',
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  properties: {
-                    success: { type: 'boolean', example: true },
-                    updatedAt: { type: 'string', format: 'date-time' }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    '/v1/live/camera-stream': {
-      get: {
-        tags: ['Live'],
-        summary: '获取 MJPEG 摄像头视频流',
-        responses: {
-          200: {
-            description: 'MJPEG 视频流',
-            content: {
-              'multipart/x-mixed-replace': {
-                schema: { type: 'string', format: 'binary' }
               }
             }
           }
