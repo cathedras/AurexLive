@@ -5,12 +5,12 @@ export function buildWsAttemptUrls(param) {
   const host = location.hostname || 'localhost';
 
   const suffix = param ? `/${param}` : '';
+  const sameOriginUrl = `${scheme}://${location.host}/ws${suffix}`;
+  const apiHostUrl = `${scheme}://${host}:${apiPort}/ws${suffix}`;
+  const isLocalFrontend = ['localhost', '127.0.0.1', '::1'].includes(host);
+  const shouldPreferApiHost = isLocalFrontend && String(location.port || '') !== String(apiPort);
 
-  return [
-    `${scheme}://${host}:${apiPort}${suffix}`,
-    `${scheme}://${location.host}${suffix}`,
-    `${scheme}://${location.hostname}${suffix}`
-  ];
+  return Array.from(new Set(shouldPreferApiHost ? [apiHostUrl, sameOriginUrl] : [sameOriginUrl, apiHostUrl]));
 }
 
 export default buildWsAttemptUrls;

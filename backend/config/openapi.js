@@ -1,3 +1,7 @@
+const isHttpsEnabled = ['1', 'true', 'yes'].includes(String(process.env.USE_HTTPS || '').trim().toLowerCase());
+const httpScheme = isHttpsEnabled ? 'https' : 'http';
+const wsScheme = isHttpsEnabled ? 'wss' : 'ws';
+
 const openApiSpec = {
   openapi: '3.0.3',
   info: {
@@ -7,7 +11,7 @@ const openApiSpec = {
   },
   servers: [
     {
-      url: 'http://localhost:3000',
+      url: `${httpScheme}://localhost:3000`,
       description: '本地开发环境'
     }
   ],
@@ -23,7 +27,7 @@ const openApiSpec = {
     { name: 'Diagnostics', description: '前端错误回传' }
   ],
   'x-websocket': {
-    endpoint: 'ws://localhost:3000/{client-type}',
+    endpoint: `${wsScheme}://localhost:3000/ws/{client-type}`,
     description: 'WebSocket 连接路径即客户端类型，例如 recording、volume-:2。连接成功后服务端会先下发 clientId。',
     clientToServer: [
       {

@@ -1,7 +1,8 @@
 const WebSocket = require('ws');
+const { getDefaultWsUrl } = require('./getDefaultWsUrl');
 
 // Connect to local server as a volume client. Adjust device suffix as needed.
-const url = 'ws://localhost:3000/volume-:2';
+const url = getDefaultWsUrl();
 
 console.log('Connecting to', url);
 const ws = new WebSocket(url);

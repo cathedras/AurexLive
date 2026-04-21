@@ -1,16 +1,13 @@
 import React, { useRef, useState, useEffect } from 'react'
 
+import buildWsAttemptUrls from '../services/ws-addrconfig'
+
 export default function WsDemo() {
   const [url, setUrl] = useState(() => {
-    // When running frontend dev server (vite) the origin port is different (e.g. 5173).
-    // Backend WebSocket server runs on port 3000 by default. Use backend URL in dev.
     try {
-      const loc = window.location
-      const isDevPort = loc.port && loc.port !== '3000'
-      const proto = loc.protocol === 'https:' ? 'wss' : 'ws'
-      return isDevPort ? `${proto}://localhost:3000` : loc.origin.replace(/^http/, 'ws')
+      return buildWsAttemptUrls()[0] || ''
     } catch (e) {
-      return 'ws://localhost:3000'
+      return 'wss://localhost:3000'
     }
   })
   const [connected, setConnected] = useState(false)

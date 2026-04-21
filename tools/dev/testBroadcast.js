@@ -1,8 +1,9 @@
 const WebSocket = require('ws');
 const fetch = globalThis.fetch || ((...args) => import('node-fetch').then(({default: fetch}) => fetch(...args)));
+const { getDefaultWsUrl } = require('./getDefaultWsUrl');
 
 async function run() {
-  const url = 'ws://localhost:3000/';
+  const url = getDefaultWsUrl();
   console.log('Connecting to', url);
   const ws = new WebSocket(url);
 

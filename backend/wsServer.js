@@ -1,4 +1,5 @@
 const WebSocket = require('ws');
+const https = require('https');
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
@@ -9,8 +10,26 @@ const { createLogger } = require('./middleware/logger');
 const logger = createLogger({ source: 'initWebSocket' });
 const VOLUME_MONITOR_START_DELAY_MS = 0;
 
+function normalizeClientType(requestPath) {
+  const rawPath = String(requestPath || '/').split('?')[0].replace(/^\/+/, '');
+  if (!rawPath) {
+    return 'default';
+  }
+
+  if (rawPath.startsWith('ws/')) {
+    return rawPath.slice(3) || 'default';
+  }
+
+  if (rawPath === 'ws') {
+    return 'default';
+  }
+
+  return rawPath;
+}
+
 module.exports = function initWebSocket(server) {
   const wss = new WebSocket.Server({ server });
+  const publicWsScheme = String(process.env.PUBLIC_WS_PROTOCOL || '').trim() || (server instanceof https.Server ? 'wss' : 'ws');
 
   // Print WebSocket endpoints once the HTTP server is listening
   function printEndpoints() {
@@ -30,11 +49,11 @@ module.exports = function initWebSocket(server) {
       });
       console.log('WebSocket endpoints:');
       addrs.forEach((a) => {
-        console.log(`  ws://${a}:${port}`);
+        console.log(`  ${publicWsScheme}://${a}:${port}`);
       });
-      console.log('Note: if front-end is served over HTTPS use wss:// and configure TLS/proxy accordingly.');
+      console.log(`Note: if front-end is served over HTTPS use ${publicWsScheme === 'wss' ? 'wss://' : 'ws://'} and configure TLS/proxy accordingly.`);
     } catch (e) {
-      logger.info('WebSocket 地址: ws://localhost:3000', 'printEndpoints');
+      logger.info(`WebSocket 地址: ${publicWsScheme}://localhost:3000`, 'printEndpoints');
     }
   }
 
@@ -64,7 +83,7 @@ module.exports = function initWebSocket(server) {
     // Determine client type from request path (strip leading '/') and store it
     try {
       const reqPath = req && req.url ? req.url : '/';
-      const clientType = String(reqPath).replace(/^\//, '') || 'default';
+      const clientType = normalizeClientType(reqPath);
       wsClientService.setClientType(clientId, clientType);
     } catch (e) {}
     // 发送客户端ID给前端

@@ -14,6 +14,7 @@ const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
+const https = require('https');
 const swaggerUi = require('swagger-ui-express');
 const http = require('http');
 const os = require('os');
@@ -61,10 +62,43 @@ if (fs.existsSync(generatedSpecPath)) {
 
 // 创建 HTTP 服务器
 const app = express();
-const server = http.createServer(app);
 const port = process.env.PORT || 3000;
+const defaultDevKeyPath = path.join(__dirname, '..', 'certs', 'backend-dev.key');
+const defaultDevCertPath = path.join(__dirname, '..', 'certs', 'backend-dev.crt');
+const explicitHttpsFlag = ['1', 'true', 'yes'].includes(String(process.env.USE_HTTPS || '').trim().toLowerCase());
+const useHttps = explicitHttpsFlag || (
+  process.env.NODE_ENV !== 'production' &&
+  fs.existsSync(defaultDevKeyPath) &&
+  fs.existsSync(defaultDevCertPath)
+);
 const frontendDevServerUrl = process.env.FRONTEND_DEV_SERVER_URL || 'https://localhost:5173';
 const useViteDevServer = process.env.NODE_ENV !== 'production' && process.env.USE_VITE_DEV_SERVER !== '0';
+
+function createServerInstance() {
+  if (!useHttps) {
+    return http.createServer(app);
+  }
+
+  const sslKeyPath = process.env.SSL_KEY_PATH || defaultDevKeyPath;
+  const sslCertPath = process.env.SSL_CERT_PATH || defaultDevCertPath;
+
+  if (!sslKeyPath || !sslCertPath) {
+    throw new Error('USE_HTTPS 已启用，但缺少 SSL_KEY_PATH 或 SSL_CERT_PATH');
+  }
+
+  if (!fs.existsSync(sslKeyPath) || !fs.existsSync(sslCertPath)) {
+    throw new Error(`HTTPS 证书不存在: key=${sslKeyPath} cert=${sslCertPath}`);
+  }
+
+  const tlsOptions = {
+    key: fs.readFileSync(sslKeyPath),
+    cert: fs.readFileSync(sslCertPath)
+  };
+
+  return https.createServer(tlsOptions, app);
+}
+
+const server = createServerInstance();
 
 function getAccessibleFrontendDevServerUrl() {
   if (!useViteDevServer) {
@@ -200,9 +234,9 @@ function startServer() {
 
     logger.info('============================================');
     logger.info('演出服务启动成功 🚀 ✅');
-    logger.info(`访问地址: http://localhost:${port}`);
-    logger.info(`接口文档: http://localhost:${port}/docs`);
-    logger.info(`原始接口文档: http://localhost:${port}/docs/openapi.json`);
+    logger.info(`访问地址: ${useHttps ? 'https' : 'http'}://localhost:${port}`);
+    logger.info(`接口文档: ${useHttps ? 'https' : 'http'}://localhost:${port}/docs`);
+    logger.info(`原始接口文档: ${useHttps ? 'https' : 'http'}://localhost:${port}/docs/openapi.json`);
     logger.info(`上传文件保存路径: ${uploadDir}`);
     logger.info(`演出记录保存路径: ${showRecordDir}`);
     logger.info(`录音文件保存路径: ${recordingDir}`);
