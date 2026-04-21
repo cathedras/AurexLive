@@ -63,8 +63,17 @@ if (fs.existsSync(generatedSpecPath)) {
 // 创建 HTTP 服务器
 const app = express();
 const port = process.env.PORT || 3000;
-const defaultDevKeyPath = path.join(__dirname, '..', 'certs', 'backend-dev.key');
-const defaultDevCertPath = path.join(__dirname, '..', 'certs', 'backend-dev.crt');
+const projectRoot = path.resolve(__dirname, '..');
+
+// 证书路径始终基于项目根目录解析，不依赖 cwd（兼容 nodemon 从 backend/ 目录启动）
+const defaultDevKeyPath = path.join(projectRoot, 'certs', 'backend-dev.key');
+const defaultDevCertPath = path.join(projectRoot, 'certs', 'backend-dev.crt');
+
+function resolveCertPath(envValue, fallback) {
+  if (!envValue) return fallback;
+  return path.isAbsolute(envValue) ? envValue : path.resolve(projectRoot, envValue);
+}
+
 const explicitHttpsFlag = ['1', 'true', 'yes'].includes(String(process.env.USE_HTTPS || '').trim().toLowerCase());
 const useHttps = explicitHttpsFlag || (
   process.env.NODE_ENV !== 'production' &&
@@ -79,12 +88,8 @@ function createServerInstance() {
     return http.createServer(app);
   }
 
-  const sslKeyPath = process.env.SSL_KEY_PATH || defaultDevKeyPath;
-  const sslCertPath = process.env.SSL_CERT_PATH || defaultDevCertPath;
-
-  if (!sslKeyPath || !sslCertPath) {
-    throw new Error('USE_HTTPS 已启用，但缺少 SSL_KEY_PATH 或 SSL_CERT_PATH');
-  }
+  const sslKeyPath = resolveCertPath(process.env.SSL_KEY_PATH, defaultDevKeyPath);
+  const sslCertPath = resolveCertPath(process.env.SSL_CERT_PATH, defaultDevCertPath);
 
   if (!fs.existsSync(sslKeyPath) || !fs.existsSync(sslCertPath)) {
     throw new Error(`HTTPS 证书不存在: key=${sslKeyPath} cert=${sslCertPath}`);

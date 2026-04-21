@@ -1,10 +1,12 @@
 const { randomUUID } = require('crypto');
 const EventEmitter = require('events');
+const os = require('os');
 const mediasoup = require('mediasoup');
 const { createLogger } = require('../middleware/logger');
 const wsClientService = require('./wsClientService');
 
 const logger = createLogger({ source: 'mediasoupService' });
+const TRANSPORT_DIAGNOSTICS_INTERVAL_MS = 5000;
 
 function broadcastLivePushEvent(event, data = {}) {
   try {
@@ -18,15 +20,54 @@ function broadcastLivePushEvent(event, data = {}) {
   }
 }
 
-function createListenIps() {
-  const listenIp = String(process.env.MEDIASOUP_LISTEN_IP || '0.0.0.0').trim();
-  const announcedIp = String(process.env.MEDIASOUP_ANNOUNCED_IP || '').trim();
-
-  const listenIps = [{ ip: listenIp }];
-  if (announcedIp) {
-    listenIps[0].announcedIp = announcedIp;
+function broadcastTransportState(transportRecord, event = 'transport-state', extraData = {}) {
+  if (!transportRecord || !transportRecord.transport) {
+    return;
   }
-  return listenIps;
+
+  broadcastLivePushEvent(event, {
+    sessionId: transportRecord.sessionId,
+    transportId: transportRecord.id,
+    direction: transportRecord.direction,
+    createdAt: transportRecord.createdAt,
+    transport: getTransportSnapshot(transportRecord.transport),
+    ...extraData
+  });
+}
+
+function getLocalIpAddress() {
+  const interfaces = os.networkInterfaces();
+
+  for (const name of Object.keys(interfaces)) {
+    for (const item of interfaces[name] || []) {
+      if (item.family === 'IPv4' && !item.internal) {
+        return item.address;
+      }
+    }
+  }
+
+  return '127.0.0.1';
+}
+
+function createListenIps() {
+  const localIp = getLocalIpAddress();
+  const listenIp = localIp || '127.0.0.1';
+
+  return [{ ip: listenIp }];
+}
+
+function getTransportSnapshot(transport) {
+  if (!transport) {
+    return null;
+  }
+
+  return {
+    id: transport.id,
+    iceState: transport.iceState || null,
+    iceRole: transport.iceRole || null,
+    dtlsState: transport.dtlsState || null,
+    connectionState: transport.connectionState || null
+  };
 }
 
 function createRouterMediaCodecs() {
@@ -64,6 +105,22 @@ class MediasoupService extends EventEmitter {
     this.transports = new Map();
     this.producers = new Map();
     this.consumers = new Map();
+    this.transportDiagnosticsTimer = setInterval(() => {
+      this.broadcastTransportDiagnostics();
+    }, TRANSPORT_DIAGNOSTICS_INTERVAL_MS);
+
+    if (typeof this.transportDiagnosticsTimer?.unref === 'function') {
+      this.transportDiagnosticsTimer.unref();
+    }
+  }
+
+  broadcastTransportDiagnostics() {
+    for (const transportRecord of this.transports.values()) {
+      broadcastTransportState(transportRecord, 'transport-state', {
+        source: 'periodic',
+        intervalMs: TRANSPORT_DIAGNOSTICS_INTERVAL_MS
+      });
+    }
   }
 
   async getWorker() {
@@ -116,8 +173,13 @@ class MediasoupService extends EventEmitter {
     }
 
     if (created) {
+      const sessionState = this.getSessionState(sessionId);
       broadcastLivePushEvent('session-created', {
-        sessionId
+        sessionId,
+        createdAt: sessionState?.createdAt || new Date().toISOString(),
+        transportCount: sessionState?.transportCount || 0,
+        producerCount: sessionState?.producerCount || 0,
+        consumerCount: sessionState?.consumerCount || 0
       });
     }
 
@@ -180,8 +242,36 @@ class MediasoupService extends EventEmitter {
     this.transports.set(transport.id, transportRecord);
     this.sessions.get(session.sessionId).transportIds.add(transport.id);
 
+    logger.info(`transport ${transport.id} created ${JSON.stringify(getTransportSnapshot(transport))}`, 'transport');
+    broadcastTransportState(transportRecord, 'transport-created', {
+      source: 'created'
+    });
+
+    transport.on('icestatechange', (state) => {
+      logger.info(`transport ${transport.id} ice state ${state}`, 'transport');
+      broadcastTransportState(transportRecord, 'transport-state', {
+        source: 'state-change',
+        changedField: 'iceState',
+        changedValue: state
+      });
+    });
+
+    transport.on('connectionstatechange', (state) => {
+      logger.info(`transport ${transport.id} connection state ${state}`, 'transport');
+      broadcastTransportState(transportRecord, 'transport-state', {
+        source: 'state-change',
+        changedField: 'connectionState',
+        changedValue: state
+      });
+    });
+
     transport.on('dtlsstatechange', (state) => {
       logger.info(`transport ${transport.id} dtls state ${state}`, 'transport');
+      broadcastTransportState(transportRecord, 'transport-state', {
+        source: 'state-change',
+        changedField: 'dtlsState',
+        changedValue: state
+      });
       if (state === 'closed') {
         this.closeTransport(transport.id).catch((error) => {
           logger.warning(`failed to close transport ${transport.id}: ${error.message}`, 'transport');
@@ -205,7 +295,9 @@ class MediasoupService extends EventEmitter {
       dtlsParameters: transport.dtlsParameters,
       sctpParameters: transport.sctpParameters,
       iceState: transport.iceState,
-      iceRole: transport.iceRole
+      iceRole: transport.iceRole,
+      dtlsState: transport.dtlsState,
+      connectionState: transport.connectionState
     };
   }
 
@@ -216,10 +308,31 @@ class MediasoupService extends EventEmitter {
     }
 
     await record.transport.connect({ dtlsParameters });
+    broadcastTransportState(record, 'transport-state', {
+      source: 'connect'
+    });
     return {
       transportId,
       connected: true,
-      dtlsState: record.transport.dtlsState
+      iceState: record.transport.iceState || null,
+      dtlsState: record.transport.dtlsState || null,
+      connectionState: record.transport.connectionState || null,
+      transport: getTransportSnapshot(record.transport)
+    };
+  }
+
+  getTransportState(transportId) {
+    const record = this.transports.get(transportId);
+    if (!record) {
+      return null;
+    }
+
+    return {
+      transportId: record.id,
+      sessionId: record.sessionId,
+      direction: record.direction,
+      createdAt: record.createdAt,
+      transport: getTransportSnapshot(record.transport)
     };
   }
 
@@ -257,7 +370,9 @@ class MediasoupService extends EventEmitter {
       transportId,
       producerId: producer.id,
       kind: producer.kind,
-      producerCount: session ? session.producerIds.size : 0
+      producerCount: session ? session.producerIds.size : 0,
+      createdAt: this.producers.get(producer.id)?.createdAt || new Date().toISOString(),
+      appData: producer.appData || {}
     });
 
     producer.on('close', () => {
@@ -311,6 +426,18 @@ class MediasoupService extends EventEmitter {
       createdAt: new Date().toISOString()
     });
 
+    consumer.on('score', (score) => {
+      logger.info(`consumer ${consumer.id} score ${JSON.stringify(score)}`, 'consumer');
+    });
+
+    consumer.on('producerpause', () => {
+      logger.info(`consumer ${consumer.id} producer paused`, 'consumer');
+    });
+
+    consumer.on('producerresume', () => {
+      logger.info(`consumer ${consumer.id} producer resumed`, 'consumer');
+    });
+
     const session = this.sessions.get(transportRecord.sessionId);
     if (session) {
       session.consumerIds.add(consumer.id);
@@ -334,7 +461,9 @@ class MediasoupService extends EventEmitter {
       kind: consumer.kind,
       rtpParameters: consumer.rtpParameters,
       type: consumer.type,
-      producerPaused: consumer.producerPaused
+      paused: consumer.paused,
+      producerPaused: consumer.producerPaused,
+      score: consumer.score || null
     };
   }
 
@@ -347,7 +476,10 @@ class MediasoupService extends EventEmitter {
     await record.consumer.resume();
     return {
       consumerId,
-      resumed: true
+      resumed: true,
+      paused: record.consumer.paused,
+      producerPaused: record.consumer.producerPaused,
+      score: record.consumer.score || null
     };
   }
 
@@ -412,7 +544,8 @@ class MediasoupService extends EventEmitter {
     broadcastLivePushEvent('session-closed', {
       sessionId,
       producerCount: producerIds.length,
-      transportCount: transportIds.length
+      transportCount: transportIds.length,
+      consumerCount: consumerIds.length
     });
 
     return true;

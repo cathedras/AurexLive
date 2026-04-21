@@ -21,18 +21,22 @@ function LivePreviewPage() {
   const consumedProducerIdsRef = useRef(new Set())
   const [searchParams] = useSearchParams()
   const sessionId = useMemo(() => String(searchParams.get('sessionId') || '').trim(), [searchParams])
-  const [reloadToken, setReloadToken] = useState(0)
   const [status, setStatus] = useState('正在连接')
   const [errorMessage, setErrorMessage] = useState('')
   const [producerSummary, setProducerSummary] = useState([])
   const [monitorStatus, setMonitorStatus] = useState('未连接')
   const [monitorLogs, setMonitorLogs] = useState([])
+  const [videoDebug, setVideoDebug] = useState({
+    label: '未初始化',
+    readyState: 0,
+    networkState: 0,
+    paused: true,
+    currentTime: 0,
+    videoWidth: 0,
+    videoHeight: 0,
+    srcObjectTracks: [],
+  })
   const monitorLogSeqRef = useRef(0)
-
-  const handleManualRefresh = () => {
-    setReloadToken((value) => value + 1)
-    setStatus('正在手动刷新')
-  }
 
   const appendMonitorLog = (message, data = null) => {
     const details = (() => {
@@ -56,6 +60,33 @@ function LivePreviewPage() {
     setMonitorLogs((current) => [...current.slice(-19), nextLog])
   }
 
+  const captureVideoDebug = (label) => {
+    const video = videoRef.current
+    if (!video) {
+      return
+    }
+
+    const nextVideoDebug = {
+      label,
+      readyState: video.readyState,
+      networkState: video.networkState,
+      paused: video.paused,
+      currentTime: Number.isFinite(video.currentTime) ? Number(video.currentTime.toFixed(3)) : 0,
+      videoWidth: video.videoWidth,
+      videoHeight: video.videoHeight,
+      srcObjectTracks: video.srcObject?.getTracks?.().map((track) => ({
+        kind: track.kind,
+        id: track.id,
+        readyState: track.readyState,
+        muted: track.muted,
+        enabled: track.enabled,
+      })) || [],
+    }
+
+    setVideoDebug(nextVideoDebug)
+    console.log('🎬 preview video debug', nextVideoDebug)
+  }
+
   const attachStreamToVideo = async () => {
     const video = videoRef.current
     if (!video || !streamRef.current) {
@@ -65,12 +96,39 @@ function LivePreviewPage() {
     const nextStream = new MediaStream(streamRef.current.getTracks())
     streamRef.current = nextStream
     video.srcObject = nextStream
+    video.onloadedmetadata = () => {
+      captureVideoDebug('loadedmetadata')
+      setStatus('视频流已加载，等待播放')
+    }
+    video.onloadeddata = () => {
+      captureVideoDebug('loadeddata')
+      setStatus('视频首帧已加载，正在播放')
+    }
+    video.onplaying = () => {
+      captureVideoDebug('playing')
+      setStatus('视频流正在播放')
+    }
+    video.onpause = () => {
+      captureVideoDebug('pause')
+      setStatus('视频流已暂停')
+    }
+    video.onwaiting = () => {
+      captureVideoDebug('waiting')
+      setStatus('视频流正在等待首帧')
+    }
+    video.onerror = () => {
+      captureVideoDebug('error')
+      setErrorMessage('视频标签播放失败，请检查浏览器控制台或编码格式')
+      setStatus('预览失败')
+    }
 
     try {
       await video.play()
+      captureVideoDebug('play-promise-resolved')
     } catch(err) {
       // Some browsers require a user gesture; keep the stream attached anyway.
       console.log(err)
+      captureVideoDebug('play-promise-rejected')
     }
   }
 
@@ -160,8 +218,17 @@ function LivePreviewPage() {
         try {
           const consumeResult = await consumeLiveTrack(recvTransport.id, producer.producerId, deviceRef.current.rtpCapabilities)
           if (!consumeResult?.success) {
+            appendMonitorLog('❌ consume 失败', {
+              producerId: producer.producerId,
+              response: consumeResult,
+            })
             continue
           }
+
+          appendMonitorLog('✅ consume 成功', {
+            producerId: producer.producerId,
+            consumer: consumeResult.consumer,
+          })
 
           const consumer = await recvTransport.consume({
             id: consumeResult.consumer.consumerId,
@@ -190,28 +257,53 @@ function LivePreviewPage() {
           })
 
           consumer.track.onunmute = () => {
+            captureVideoDebug(`track-unmute:${consumer.track.kind}`)
             console.log('✅ 收到 WebRTC 视频/音频帧！', {
               producerId: producer.producerId,
               consumerId: consumer.id,
               kind: consumer.track.kind,
             })
+
+            if (consumer.track?.kind === 'video') {
+              setStatus('视频首帧已到达，正在渲染')
+            }
+
+            if (videoRef.current) {
+              attachStreamToVideo().catch((error) => {
+                setErrorMessage(error.message)
+              })
+            }
           }
 
           consumer.track.onmute = () => {
+            captureVideoDebug(`track-mute:${consumer.track.kind}`)
             console.log('❌ 没有收到媒体帧', {
               producerId: producer.producerId,
               consumerId: consumer.id,
               kind: consumer.track.kind,
             })
-          }
 
-          await attachStreamToVideo()
+            if (consumer.track?.kind === 'video') {
+              setStatus('视频轨道暂时无帧')
+            }
+          }
 
           await resumeLiveConsumer(consumer.id)
 
+          appendMonitorLog('✅ resume 已调用', {
+            consumerId: consumer.id,
+            kind: consumer.track.kind,
+            trackReadyState: consumer.track.readyState,
+            trackMuted: consumer.track.muted,
+          })
+
+          await attachStreamToVideo()
+
           if (consumer.track?.kind === 'video') {
-            setStatus('视频流已连接，正在缓冲画面')
+            setStatus('视频流已连接，正在等待首帧')
           }
+
+          captureVideoDebug(`consumer-added:${consumer.track.kind}`)
         } catch (consumerError) {
           setErrorMessage(consumerError.message)
         }
@@ -291,7 +383,7 @@ function LivePreviewPage() {
       deviceRef.current = null
       consumedProducerIdsRef.current = new Set()
     }
-  }, [sessionId, reloadToken])
+  }, [sessionId])
 
   useEffect(() => {
     if (!sessionId) {
@@ -336,9 +428,41 @@ function LivePreviewPage() {
 
             appendMonitorLog(`收到推流事件：${payload.event || 'unknown'}`, payload)
 
-            if (payload.event === 'producer-created' || payload.event === 'session-created' || payload.event === 'session-closed') {
-              setStatus(`收到推流事件：${payload.event}`)
-              setReloadToken((value) => value + 1)
+            if (payload.event === 'session-created') {
+              setStatus('等待主播开播')
+              return
+            }
+
+            if (payload.event === 'session-closed') {
+              setStatus('等待主播开播')
+              setProducerSummary([])
+              consumedProducerIdsRef.current = new Set()
+              return
+            }
+
+            if (payload.event === 'transport-created' || payload.event === 'transport-state') {
+              return
+            }
+
+            if (payload.event === 'producer-created') {
+              setProducerSummary((current) => {
+                if (current.some((producer) => producer.producerId === payload.producerId)) {
+                  return current
+                }
+
+                return [
+                  ...current,
+                  {
+                    producerId: payload.producerId,
+                    kind: payload.kind,
+                    transportId: payload.transportId,
+                    createdAt: payload.createdAt || new Date().toISOString(),
+                    appData: payload.appData || {},
+                  },
+                ]
+              })
+
+              setStatus('收到主播推流，正在订阅')
             }
           }
         )
@@ -393,9 +517,6 @@ function LivePreviewPage() {
 
         <div className="live-preview-page-nav">
           <Link to="/page/live-stream">返回直播发布页</Link>
-          <button type="button" className="live-stream-page-secondary-btn" onClick={handleManualRefresh}>
-            手动刷新
-          </button>
         </div>
 
         <div className="live-preview-page-layout">
@@ -439,6 +560,11 @@ function LivePreviewPage() {
                   </li>
                 )) : <li className="live-preview-page-monitor-empty">等待手机端推流事件</li>}
               </ul>
+            </div>
+
+            <div className="live-preview-page-field">
+              <strong>视频诊断</strong>
+              <pre className="live-preview-page-video-debug">{JSON.stringify(videoDebug, null, 2)}</pre>
             </div>
           </div>
         </div>

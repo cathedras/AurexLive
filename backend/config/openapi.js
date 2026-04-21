@@ -70,6 +70,7 @@ const openApiSpec = {
       { type: 'get-status-result', description: 'get-status 命令结果。', success: true, data: { type: 'object' } },
       { type: 'echo', description: 'echo/raw 的回显消息。', success: true, data: { hello: 'world' } },
       { type: 'live-push-event', description: '手机端推流事件通知。', data: { event: 'producer-created', sessionId: '...', producerId: '...', kind: 'video', timestamp: 1679999940000 } },
+      { type: 'live-push-event', description: '直播发布端 transport 诊断推送，服务端每 5 秒发送一次。', data: { event: 'transport-state', sessionId: '...', transportId: '...', transport: { iceState: 'completed', dtlsState: 'connected', connectionState: 'connected' }, source: 'periodic', intervalMs: 5000, timestamp: 1679999940000 } },
       { type: 'volume', description: '音量推送事件，通常是 0-100 的整数。', data: { fileName: 'recording-2026-03-28T11-00-00-000Z.flac', volume: 42, timestamp: 1679999940000 } }
     ]
   },

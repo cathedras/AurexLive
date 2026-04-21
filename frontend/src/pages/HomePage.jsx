@@ -7,6 +7,8 @@ import {
   fetchUserSettings as loadUserSettings,
 } from '../services/home/homePageService'
 
+import HomeLivePreviewPlayer from '../component/HomeLivePreviewPlayer'
+
 function HomePage() {
   const [currentShowText, setCurrentShowText] = useState('当前未设置演出，请先在音乐播放页保存演出。')
   const [currentProgramText, setCurrentProgramText] = useState('当前表演节目：暂无')
@@ -106,20 +108,7 @@ function HomePage() {
             <div className={`live-setting-badge ${autoPlayEnabled ? 'live-setting-badge-on' : 'live-setting-badge-off'}`}>
               自动播放：{autoPlayEnabled ? '已开启' : '已关闭'}
             </div>
-            <div className="live-video-wrap">
-              <div className="live-video-toolbar">
-                <div className="live-video-toolbar-tip">
-                  实时画面已切换为 WebRTC 预览链路，不再使用 MJPEG / 帧流。
-                </div>
-                <Link to="/page/live-stream" className="home-link-btn home-link-btn-secondary">
-                  打开直播发布页
-                </Link>
-              </div>
-
-              <div className="home-live-placeholder">
-                需要查看实时画面时，请先在直播发布页启动推流，再打开内网预览页。
-              </div>
-            </div>
+            <HomeLivePreviewPlayer />
             <div className="program-marquee-wrap" aria-label="当前节目滚动展示" style={{ '--home-marquee-speed': `${Math.max(6, marqueeSpeedSec - 2)}s` }}>
               <div className="program-marquee-track">
                 <span>{currentProgramText}</span>

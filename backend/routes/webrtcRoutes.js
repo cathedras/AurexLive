@@ -108,6 +108,19 @@ router.post('/transports/:transportId/connect', async (req, res) => {
   }
 });
 
+router.get('/transports/:transportId', async (req, res) => {
+  try {
+    const transport = mediasoupService.getTransportState(req.params.transportId);
+    if (!transport) {
+      return res.status(404).json({ success: false, message: '传输不存在' });
+    }
+
+    return res.json({ success: true, transport });
+  } catch (error) {
+    return handleError(res, error, '获取 WebRTC 传输状态失败');
+  }
+});
+
 router.post('/transports/:transportId/produce', async (req, res) => {
   try {
     const kind = String(req.body?.kind || '').trim();

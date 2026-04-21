@@ -11,3 +11,7 @@ export async function fetchUserSettings() {
 export async function fetchCurrentShowState() {
   return await apiGet('/v1/music/show/current-state')
 }
+
+export async function fetchWebRtcSessions() {
+  return await apiGet('/v1/webrtc/sessions')
+}

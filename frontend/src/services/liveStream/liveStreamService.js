@@ -16,6 +16,10 @@ export async function connectLiveTransport(transportId, dtlsParameters) {
   return await apiPost(`/v1/webrtc/transports/${transportId}/connect`, { dtlsParameters })
 }
 
+export async function fetchLiveTransportState(transportId) {
+  return await apiGet(`/v1/webrtc/transports/${transportId}`)
+}
+
 export async function produceLiveTrack(transportId, kind, rtpParameters, appData = {}) {
   return await apiPost(`/v1/webrtc/transports/${transportId}/produce`, {
     kind,
