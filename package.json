@@ -9,6 +9,8 @@
     "dev": "npm run dev:local",
     "dev:local": "concurrently \"npm run server:dev\" \"node backend/monitorWorker.js\" \"npm run client\"",
     "build": "npm --prefix frontend run build",
+    "deploy": "bash scripts/deploy.sh",
+    "deploy:skip-install": "SKIP_INSTALL=1 bash scripts/deploy.sh",
     "test": "mocha --recursive --timeout 5000",
     "pm2:start": "npx pm2 start ecosystem.config.js",
     "pm2:stop": "npx pm2 stop ecosystem.config.js",

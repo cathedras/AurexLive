@@ -196,6 +196,25 @@ npm run build
 npm run pm2:start
 ```
 
+### One-Click Deploy
+
+```bash
+npm run deploy
+```
+
+This command will:
+
+- install root and frontend dependencies with `npm ci` when lockfiles are present
+- build the frontend production bundle
+- start or reload the PM2 applications defined in `ecosystem.config.js`
+- save the current PM2 process list
+
+If dependencies are already installed on the target machine, you can skip reinstalling them:
+
+```bash
+SKIP_INSTALL=1 npm run deploy
+```
+
 ### Nginx Reverse Proxy
 
 ```nginx
