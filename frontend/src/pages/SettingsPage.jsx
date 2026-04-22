@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
+import { useLanguage } from '../context/languageContext'
+
 import { fetchSettings as loadSettings, saveSettings as persistSettings } from '../services/settings/settingsService'
 
 const defaultSettings = {
@@ -27,6 +29,7 @@ const defaultSettings = {
 }
 
 function SettingsPage() {
+  const { t } = useLanguage()
   const [settings, setSettings] = useState(defaultSettings)
   const [message, setMessage] = useState('')
   const [saving, setSaving] = useState(false)
@@ -39,12 +42,12 @@ function SettingsPage() {
     try {
       const result = await loadSettings()
       if (!result.success) {
-        throw new Error(result.message || '加载失败')
+        throw new Error(result.message || t('Load failed', '加载失败'))
       }
       setSettings(mergeSettings(result.settings))
-      setMessage('已加载用户设置')
+      setMessage(t('User settings loaded.', '已加载用户设置'))
     } catch (error) {
-      setMessage(`加载设置失败：${error.message}`)
+      setMessage(t(`Failed to load settings: ${error.message}`, `加载设置失败：${error.message}`))
     }
   }
 
@@ -63,12 +66,12 @@ function SettingsPage() {
       setSaving(true)
       const result = await persistSettings(settings)
       if (!result.success) {
-        throw new Error(result.message || '保存失败')
+        throw new Error(result.message || t('Save failed', '保存失败'))
       }
       setSettings(mergeSettings(result.settings))
-      setMessage('设置保存成功')
+      setMessage(t('Settings saved successfully.', '设置保存成功'))
     } catch (error) {
-      setMessage(`保存失败：${error.message}`)
+      setMessage(t(`Save failed: ${error.message}`, `保存失败：${error.message}`))
     } finally {
       setSaving(false)
     }
@@ -77,67 +80,67 @@ function SettingsPage() {
   return (
     <div className="container settings-container">
       <div className="page-actions settings-actions">
-        <Link to="/page" className="back-link">返回首页</Link>
-        <Link to="/page/music" className="back-link">返回播放页</Link>
+        <Link to="/page" className="back-link">{t('Back to home', '返回首页')}</Link>
+        <Link to="/page/music" className="back-link">{t('Back to music page', '返回播放页')}</Link>
       </div>
 
-      <h1>用户设置中心</h1>
+      <h1>{t('User settings', '用户设置中心')}</h1>
       {message ? <div className="music-message">{message}</div> : null}
 
       <div className="settings-panel">
-        <div className="settings-section-title">基础资料</div>
+        <div className="settings-section-title">{t('Profile', '基础资料')}</div>
         <div className="settings-grid">
-          <label className="settings-label">昵称<input className="settings-input" value={settings.profile.displayName} onChange={(e) => updateSection('profile', 'displayName', e.target.value)} /></label>
-          <label className="settings-label">头像地址<input className="settings-input" value={settings.profile.avatarUrl} onChange={(e) => updateSection('profile', 'avatarUrl', e.target.value)} /></label>
-          <label className="settings-label">手机号<input className="settings-input" value={settings.profile.phone} onChange={(e) => updateSection('profile', 'phone', e.target.value)} /></label>
-          <label className="settings-label">邮箱<input className="settings-input" value={settings.profile.email} onChange={(e) => updateSection('profile', 'email', e.target.value)} /></label>
+          <label className="settings-label">{t('Display name', '昵称')}<input className="settings-input" value={settings.profile.displayName} onChange={(e) => updateSection('profile', 'displayName', e.target.value)} /></label>
+          <label className="settings-label">{t('Avatar URL', '头像地址')}<input className="settings-input" value={settings.profile.avatarUrl} onChange={(e) => updateSection('profile', 'avatarUrl', e.target.value)} /></label>
+          <label className="settings-label">{t('Phone', '手机号')}<input className="settings-input" value={settings.profile.phone} onChange={(e) => updateSection('profile', 'phone', e.target.value)} /></label>
+          <label className="settings-label">{t('Email', '邮箱')}<input className="settings-input" value={settings.profile.email} onChange={(e) => updateSection('profile', 'email', e.target.value)} /></label>
         </div>
       </div>
 
       <div className="settings-panel">
-        <div className="settings-section-title">系统偏好</div>
+        <div className="settings-section-title">{t('Preferences', '系统偏好')}</div>
         <div className="settings-grid">
-          <label className="settings-label">主题
+          <label className="settings-label">{t('Theme', '主题')}
             <select className="settings-input" value={settings.preferences.theme} onChange={(e) => updateSection('preferences', 'theme', e.target.value)}>
-              <option value="light">浅色</option>
-              <option value="dark">深色</option>
+              <option value="light">{t('Light', '浅色')}</option>
+              <option value="dark">{t('Dark', '深色')}</option>
             </select>
           </label>
-          <label className="settings-label">字号比例(%)
+          <label className="settings-label">{t('Font scale (%)', '字号比例(%)')}
             <input className="settings-input" type="number" min="80" max="140" value={settings.preferences.fontScale} onChange={(e) => updateSection('preferences', 'fontScale', Number(e.target.value || 100))} />
           </label>
-          <label className="settings-label">跑马灯速度(秒)
+          <label className="settings-label">{t('Marquee speed (sec)', '跑马灯速度(秒)')}
             <input className="settings-input" type="number" min="6" max="40" value={settings.preferences.marqueeSpeed} onChange={(e) => updateSection('preferences', 'marqueeSpeed', Number(e.target.value || 16))} />
           </label>
         </div>
       </div>
 
       <div className="settings-panel">
-        <div className="settings-section-title">语音设置</div>
+        <div className="settings-section-title">{t('Speech', '语音设置')}</div>
         <div className="settings-grid">
-          <label className="settings-label">默认识别模式
+          <label className="settings-label">{t('Default recognition mode', '默认识别模式')}
             <select className="settings-input" value={settings.speech.mode} onChange={(e) => updateSection('speech', 'mode', e.target.value)}>
-              <option value="ai">AI 识别</option>
-              <option value="local">本机识别</option>
+              <option value="ai">{t('AI recognition', 'AI 识别')}</option>
+              <option value="local">{t('Local recognition', '本机识别')}</option>
             </select>
           </label>
-          <label className="settings-label">识别语言
+          <label className="settings-label">{t('Recognition language', '识别语言')}
             <input className="settings-input" value={settings.speech.language} onChange={(e) => updateSection('speech', 'language', e.target.value)} />
           </label>
-          <label className="settings-check"><input type="checkbox" checked={settings.speech.offlineFallback} onChange={(e) => updateSection('speech', 'offlineFallback', e.target.checked)} />离线自动回退本机识别</label>
+          <label className="settings-check"><input type="checkbox" checked={settings.speech.offlineFallback} onChange={(e) => updateSection('speech', 'offlineFallback', e.target.checked)} />{t('Fall back to local recognition when offline', '离线自动回退本机识别')}</label>
         </div>
       </div>
 
       <div className="settings-panel">
-        <div className="settings-section-title">AI 设置</div>
+        <div className="settings-section-title">{t('AI', 'AI 设置')}</div>
         <div className="settings-grid">
-          <label className="settings-check"><input type="checkbox" checked={settings.ai.enabled} onChange={(e) => updateSection('ai', 'enabled', e.target.checked)} />启用 AI 文本优化</label>
-          <label className="settings-check"><input type="checkbox" checked={settings.ai.showModelHint} onChange={(e) => updateSection('ai', 'showModelHint', e.target.checked)} />显示模型提示信息</label>
+          <label className="settings-check"><input type="checkbox" checked={settings.ai.enabled} onChange={(e) => updateSection('ai', 'enabled', e.target.checked)} />{t('Enable AI text optimization', '启用 AI 文本优化')}</label>
+          <label className="settings-check"><input type="checkbox" checked={settings.ai.showModelHint} onChange={(e) => updateSection('ai', 'showModelHint', e.target.checked)} />{t('Show model hints', '显示模型提示信息')}</label>
         </div>
       </div>
 
       <div className="settings-footer">
-        <button className="upload-btn" onClick={onSave} disabled={saving}>{saving ? '保存中...' : '保存设置'}</button>
+        <button className="upload-btn" onClick={onSave} disabled={saving}>{saving ? t('Saving...', '保存中...') : t('Save settings', '保存设置')}</button>
       </div>
     </div>
   )

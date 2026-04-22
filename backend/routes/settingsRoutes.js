@@ -90,7 +90,7 @@ router.get('/', (req, res) => {
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: `读取设置失败：${error.message}`
+      message: `Failed to read settings: ${error.message}`
     });
   }
 });
@@ -102,13 +102,13 @@ router.post('/', (req, res) => {
 
     return res.json({
       success: true,
-      message: '设置保存成功',
+      message: 'Settings saved successfully.',
       settings
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: `保存设置失败：${error.message}`
+      message: `Failed to save settings: ${error.message}`
     });
   }
 });

@@ -26,7 +26,7 @@ const {
   reactDistDir,
   frontendBuildMissingHtmlPath,
   ensureDirectories,
-  recordingDir  // 添加录音目录
+  recordingDir  // Recording directory
 } = require('./config/paths');
 const uploadRoutes = require('./routes/uploadRoutes');
 const fileRoutes = require('./routes/fileRoutes');
@@ -36,7 +36,7 @@ const settingsRoutes = require('./routes/settingsRoutes');
 const liveRoutes = require('./routes/liveRoutes');
 const mobileRoutes = require('./routes/mobileRoutes');
 const clientErrorRoutes = require('./routes/clientErrorRoutes');
-const recordingRoutes = require('./routes/recordingRoutes'); // 引入录音路由
+const recordingRoutes = require('./routes/recordingRoutes'); // Import recording routes
 const recordingFilesRoutes = require('./routes/recordingFilesRoutes');
 const webrtcRoutes = require('./routes/webrtcRoutes');
 // debugRoutes removed for unit tests
@@ -60,12 +60,12 @@ if (fs.existsSync(generatedSpecPath)) {
   openApiSpec = require('./config/openapi');
 }
 
-// 创建 HTTP 服务器
+// Create the HTTP server
 const app = express();
 const port = process.env.PORT || 3000;
 const projectRoot = path.resolve(__dirname, '..');
 
-// 证书路径始终基于项目根目录解析，不依赖 cwd（兼容 nodemon 从 backend/ 目录启动）
+// Certificate paths are always resolved from the project root and do not depend on cwd (compatible with nodemon started from backend/)
 const defaultDevKeyPath = path.join(projectRoot, 'certs', 'backend-dev.key');
 const defaultDevCertPath = path.join(projectRoot, 'certs', 'backend-dev.crt');
 
@@ -92,7 +92,7 @@ function createServerInstance() {
   const sslCertPath = resolveCertPath(process.env.SSL_CERT_PATH, defaultDevCertPath);
 
   if (!fs.existsSync(sslKeyPath) || !fs.existsSync(sslCertPath)) {
-    throw new Error(`HTTPS 证书不存在: key=${sslKeyPath} cert=${sslCertPath}`);
+    throw new Error(`HTTPS certificate not found: key=${sslKeyPath} cert=${sslCertPath}`);
   }
 
   const tlsOptions = {
@@ -130,13 +130,13 @@ function getAccessibleFrontendDevServerUrl() {
   }
 }
 
-// WebSocket 服务（已抽离到 backend/wsServer.js）
+// WebSocket service (extracted to backend/wsServer.js)
 const initWebSocket = require('./wsServer');
 initWebSocket(server);
 
-// 配置跨域（前端和后端端口不同时需要）
+// Configure CORS (needed when the frontend and backend use different ports)
 app.use(cors());
-// 解析 JSON 请求体
+// Parse JSON request bodies
 app.use(express.json());
 app.use(requestLogger);
 
@@ -174,13 +174,13 @@ app.use('/v1/settings', settingsRoutes);
 app.use('/v1/live', liveRoutes);
 app.use('/v1/mobile', mobileRoutes);
 app.use('/v1/client-error', clientErrorRoutes);
-app.use('/v1/recording', recordingRoutes); // 注册录音路由
+app.use('/v1/recording', recordingRoutes); // Register recording routes
 app.use('/v1/webrtc', webrtcRoutes);
 
-// 7. 托管上传文件和前端静态文件
+// 7. Serve uploaded files and frontend static assets
 app.use('/v1/uploads', express.static(uploadDir));
 app.use('/v1/show_record', express.static(showRecordDir));
-app.use('/v1/recordings', recordingFilesRoutes); // 托管录音文件（安全处理 Range）
+app.use('/v1/recordings', recordingFilesRoutes); // Serve recording files with safe Range handling
 
 const hasReactDist = fs.existsSync(reactDistDir);
 
@@ -224,7 +224,7 @@ function startServer() {
     if (error && error.code === 'EADDRINUSE' && listenAttempts < maxListenAttempts) {
       listenAttempts += 1;
       const retryDelayMs = Math.min(1000 * listenAttempts, 3000);
-      logger.warning(`端口 ${port} 正在被占用，${retryDelayMs}ms 后重试 (${listenAttempts}/${maxListenAttempts})`, 'server.listen');
+      logger.warning(`Port ${port} is already in use; retrying in ${retryDelayMs}ms (${listenAttempts}/${maxListenAttempts})`, 'server.listen');
       setTimeout(startServer, retryDelayMs);
       return;
     }
@@ -238,14 +238,14 @@ function startServer() {
     server.removeListener('error', onError);
 
     logger.info('============================================');
-    logger.info('演出服务启动成功 🚀 ✅');
-    logger.info(`访问地址: ${useHttps ? 'https' : 'http'}://localhost:${port}`);
-    logger.info(`接口文档: ${useHttps ? 'https' : 'http'}://localhost:${port}/docs`);
-    logger.info(`原始接口文档: ${useHttps ? 'https' : 'http'}://localhost:${port}/docs/openapi.json`);
-    logger.info(`上传文件保存路径: ${uploadDir}`);
-    logger.info(`演出记录保存路径: ${showRecordDir}`);
-    logger.info(`录音文件保存路径: ${recordingDir}`);
-    logger.info(`运行时配置路径: ${runtimeConfigDir}`);
+    logger.info('Production service started successfully 🚀 ✅');
+    logger.info(`URL: ${useHttps ? 'https' : 'http'}://localhost:${port}`);
+    logger.info(`API docs: ${useHttps ? 'https' : 'http'}://localhost:${port}/docs`);
+    logger.info(`OpenAPI JSON: ${useHttps ? 'https' : 'http'}://localhost:${port}/docs/openapi.json`);
+    logger.info(`Upload directory: ${uploadDir}`);
+    logger.info(`Show record directory: ${showRecordDir}`);
+    logger.info(`Recording directory: ${recordingDir}`);
+    logger.info(`Runtime config directory: ${runtimeConfigDir}`);
     logger.info('============================================');
     const startupMonitor = createStartupMonitor();
     startupMonitor.run();

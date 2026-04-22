@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getRefreshMessage, mergeRuntimeSettings } from '../../services/musicPlay'
+import { useLanguage } from '../../context/languageContext'
 
 export function useMusicPageData({ musicPageApi, isPlaylistLocked, onPlaylistLockChange, onMessage }) {
+  const { t } = useLanguage()
   const initialLoadRef = useRef(false)
   const refreshPromiseRef = useRef(null)
   const messageRef = useRef(onMessage)
@@ -18,9 +20,9 @@ export function useMusicPageData({ musicPageApi, isPlaylistLocked, onPlaylistLoc
   const [marqueeSpeedSec, setMarqueeSpeedSec] = useState(16)
   const [fontScalePercent, setFontScalePercent] = useState(100)
   const [hasCurrentShow, setHasCurrentShow] = useState(false)
-  const [currentShowName, setCurrentShowName] = useState('未设置')
-  const [currentProgramName, setCurrentProgramName] = useState('暂无节目')
-  const [currentPerformerName, setCurrentPerformerName] = useState('暂无演出人员')
+  const [currentShowName, setCurrentShowName] = useState('Not set')
+  const [currentProgramName, setCurrentProgramName] = useState('No track yet')
+  const [currentPerformerName, setCurrentPerformerName] = useState('No performer yet')
   const [historyShows, setHistoryShows] = useState([])
   const [backendPlayback, setBackendPlayback] = useState({
     available: false,
@@ -76,7 +78,7 @@ export function useMusicPageData({ musicPageApi, isPlaylistLocked, onPlaylistLoc
     try {
       const result = await musicPageApi.fetchHistoryShows()
       if (!result.success) {
-        throw new Error(result.message || '加载失败')
+        throw new Error(result.message || t('Load failed', '加载失败'))
       }
       setHistoryShows(Array.isArray(result.shows) ? result.shows : [])
     } catch {
@@ -111,28 +113,28 @@ export function useMusicPageData({ musicPageApi, isPlaylistLocked, onPlaylistLoc
       if (!result.success || !result.hasCurrentShow || !result.currentShow) {
         setHasCurrentShow(false)
         onPlaylistLockChange(false)
-        setCurrentShowName('未设置')
-        setCurrentProgramName('暂无节目')
-        setCurrentPerformerName('暂无演出人员')
+        setCurrentShowName(t('Not set', '未设置'))
+        setCurrentProgramName(t('No track yet', '暂无节目'))
+        setCurrentPerformerName(t('No performer yet', '暂无演出人员'))
         return
       }
 
       setHasCurrentShow(true)
       onPlaylistLockChange(Boolean(result.currentShow.playlistLocked))
-      setCurrentShowName(result.currentShow.recordName || '未设置')
+      setCurrentShowName(result.currentShow.recordName || t('Not set', '未设置'))
       if (result.hasCurrentProgram && result.currentProgram) {
-        setCurrentProgramName(result.currentProgram.programName || '暂无节目')
-        setCurrentPerformerName(result.currentProgram.performer || '暂无演出人员')
+        setCurrentProgramName(result.currentProgram.programName || t('No track yet', '暂无节目'))
+        setCurrentPerformerName(result.currentProgram.performer || t('No performer yet', '暂无演出人员'))
       } else {
-        setCurrentProgramName('暂无节目')
-        setCurrentPerformerName('暂无演出人员')
+        setCurrentProgramName(t('No track yet', '暂无节目'))
+        setCurrentPerformerName(t('No performer yet', '暂无演出人员'))
       }
     } catch {
       setHasCurrentShow(false)
       onPlaylistLockChange(false)
-      setCurrentShowName('未设置')
-      setCurrentProgramName('暂无节目')
-      setCurrentPerformerName('暂无演出人员')
+      setCurrentShowName(t('Not set', '未设置'))
+      setCurrentProgramName(t('No track yet', '暂无节目'))
+      setCurrentPerformerName(t('No performer yet', '暂无演出人员'))
     }
   }, [musicPageApi, onPlaylistLockChange])
 
@@ -140,7 +142,7 @@ export function useMusicPageData({ musicPageApi, isPlaylistLocked, onPlaylistLoc
     try {
       const result = await musicPageApi.fetchMusicList()
       if (!result.success) {
-        throw new Error(result.message || '加载失败')
+        throw new Error(result.message || t('Load failed', '加载失败'))
       }
 
       const audioTracks = (result.musicList || []).map((item) => ({
@@ -165,7 +167,7 @@ export function useMusicPageData({ musicPageApi, isPlaylistLocked, onPlaylistLoc
     } catch (error) {
       setTracks([])
       setTemporaryTracks([])
-      messageRef.current(`加载音乐列表失败：${error.message}`)
+      messageRef.current(t(`Failed to load music list: ${error.message}`, `加载音乐列表失败：${error.message}`))
       return { tracks: [], temporaryTracks: [], error }
     }
   }, [musicPageApi])

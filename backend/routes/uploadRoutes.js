@@ -27,12 +27,12 @@ const upload = multer({
 router.post('/', upload.single('file'), (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ success: false, message: '请选择要上传的文件' });
+      return res.status(400).json({ success: false, message: 'Please select a file to upload.' });
     }
 
     return res.json({
       success: true,
-      message: '文件上传成功',
+      message: 'File uploaded successfully.',
       fileInfo: {
         name: req.file.originalname,
         size: req.file.size,
@@ -41,7 +41,7 @@ router.post('/', upload.single('file'), (req, res) => {
       }
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: `文件上传失败：${error.message}` });
+    return res.status(500).json({ success: false, message: `Failed to upload file: ${error.message}` });
   }
 });
 

@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
+import { useLanguage } from '../context/languageContext'
+
 import { fetchFileList as loadFileList, uploadFileWithProgress } from '../services/upload/uploadService'
 
 function UploadPage() {
+  const { t } = useLanguage()
   const [selectedFile, setSelectedFile] = useState(null)
-  const [message, setMessage] = useState('等待选择文件...')
+  const [message, setMessage] = useState('Waiting for a file...')
   const [messageType, setMessageType] = useState('success')
   const [uploadPercent, setUploadPercent] = useState(0)
   const [isUploading, setIsUploading] = useState(false)
@@ -24,7 +27,7 @@ function UploadPage() {
     }
 
     setSelectedFile(nextFile)
-    showMessage(`已选择文件：${nextFile.name} (${formatFileSize(nextFile.size)})`)
+    showMessage(t(`Selected file: ${nextFile.name} (${formatFileSize(nextFile.size)})`, `已选择文件：${nextFile.name} (${formatFileSize(nextFile.size)})`))
   }
 
   const handleDrop = (event) => {
@@ -33,12 +36,12 @@ function UploadPage() {
     if (!nextFile) return
 
     setSelectedFile(nextFile)
-    showMessage(`已选择文件：${nextFile.name} (${formatFileSize(nextFile.size)})`)
+    showMessage(t(`Selected file: ${nextFile.name} (${formatFileSize(nextFile.size)})`, `已选择文件：${nextFile.name} (${formatFileSize(nextFile.size)})`))
   }
 
   const uploadFile = async () => {
     if (!selectedFile || isUploading) {
-      showMessage('请先选择要上传的文件', 'error')
+      showMessage(t('Please select a file to upload first.', '请先选择要上传的文件'), 'error')
       return
     }
 
@@ -48,26 +51,26 @@ function UploadPage() {
     try {
       setIsUploading(true)
       setUploadPercent(0)
-      showMessage('正在上传...')
+      showMessage(t('Uploading...', '正在上传...'))
 
       const result = await uploadWithProgress(formData, (percent) => {
         setUploadPercent(percent)
       })
 
       if (result.success) {
-        showMessage(`上传成功！文件已保存：${result.fileInfo.name}`)
+        showMessage(t(`Upload successful! File saved as: ${result.fileInfo.name}`, `上传成功！文件已保存：${result.fileInfo.name}`))
         await fetchFileList()
       } else {
         throw new Error(result.message)
       }
     } catch (error) {
-      showMessage(`上传失败：${error.message}`, 'error')
+      showMessage(t(`Upload failed: ${error.message}`, `上传失败：${error.message}`), 'error')
     } finally {
       setTimeout(() => {
         setIsUploading(false)
         setUploadPercent(0)
         setSelectedFile(null)
-        showMessage('等待选择文件...')
+        showMessage(t('Waiting for a file...', '等待选择文件...'))
       }, 1200)
     }
   }
@@ -76,13 +79,13 @@ function UploadPage() {
     try {
       const result = await loadFileList()
       if (!result.success) {
-        throw new Error(result.message || '加载失败')
+        throw new Error(result.message || t('Load failed', '加载失败'))
       }
 
       setFiles(result.files || [])
     } catch (error) {
       setFiles([])
-      showMessage(`列表加载失败：${error.message}`, 'error')
+      showMessage(t(`Failed to load list: ${error.message}`, `列表加载失败：${error.message}`), 'error')
     }
   }, [])
 
@@ -93,9 +96,9 @@ function UploadPage() {
   return (
     <div className="container">
       <div className="page-actions">
-        <Link to="/page" className="back-link">返回首页</Link>
+        <Link to="/page" className="back-link">{t('Back to home', '返回首页')}</Link>
       </div>
-      <h1>文件上传</h1>
+      <h1>{t('File upload', '文件上传')}</h1>
 
       <label
         className="upload-area"
@@ -103,7 +106,7 @@ function UploadPage() {
         onDrop={handleDrop}
       >
         <div className="upload-icon">📁</div>
-        <div className="upload-text">点击或拖拽文件到此处上传</div>
+        <div className="upload-text">{t('Click or drag a file here to upload', '点击或拖拽文件到此处上传')}</div>
         <input
           type="file"
           id="fileInput"
@@ -116,7 +119,7 @@ function UploadPage() {
         onClick={uploadFile}
         disabled={!selectedFile || isUploading}
       >
-        {isUploading ? '上传中...' : '开始上传'}
+        {isUploading ? t('Uploading...', '上传中...') : t('Start upload', '开始上传')}
       </button>
 
       {isUploading && (
@@ -129,18 +132,18 @@ function UploadPage() {
 
       <div className="file-list-wrap">
         <div className="file-list-header">
-          <div className="file-list-title">已上传文件列表</div>
-          <button className="refresh-btn" onClick={fetchFileList}>刷新列表</button>
+          <div className="file-list-title">{t('Uploaded files', '已上传文件列表')}</div>
+          <button className="refresh-btn" onClick={fetchFileList}>{t('Refresh list', '刷新列表')}</button>
         </div>
         <ul className="file-list">
           {files.length === 0 ? (
-            <li className="empty-text">暂无已上传文件</li>
+            <li className="empty-text">{t('No uploaded files yet.', '暂无已上传文件')}</li>
           ) : (
             files.map((file) => (
               <li className="file-item" key={file.savedName}>
                 <span className="file-name" title={file.displayName || file.savedName}>{file.displayName || file.savedName}</span>
                 <span className="file-meta">{formatFileSize(file.size)} · {formatDateTime(file.uploadTime)}</span>
-                <a className="file-link" href={file.url} target="_blank" rel="noreferrer">查看</a>
+                <a className="file-link" href={file.url} target="_blank" rel="noreferrer">{t('Open', '查看')}</a>
               </li>
             ))
           )}

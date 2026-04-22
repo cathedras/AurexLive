@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import { buildEditedTrackList, buildMusicListSavePayload, downloadBlobFile } from '../../services/musicPlay'
 import { getRequestErrorMessage } from '../../services/apiClientUtil'
+import { useLanguage } from '../../context/languageContext'
 
 export function useMusicEditorState({
   tracks,
@@ -13,6 +14,8 @@ export function useMusicEditorState({
   setCurrentTrackId,
   setMessage,
 }) {
+  const { t } = useLanguage()
+
   const [dialogMode, setDialogMode] = useState('edit')
   const [editingTrack, setEditingTrack] = useState(null)
   const [editPerformer, setEditPerformer] = useState('')
@@ -23,7 +26,7 @@ export function useMusicEditorState({
   const [saveDialogOpen, setSaveDialogOpen] = useState(false)
   const [saveRecordName, setSaveRecordName] = useState('')
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
-  const [exportFileName, setExportFileName] = useState('节目单')
+  const [exportFileName, setExportFileName] = useState('Setlist')
   const [deletingTrack, setDeletingTrack] = useState(null)
 
   const saveCurrentMusicList = useCallback(async (nextTracks) => {
@@ -31,7 +34,7 @@ export function useMusicEditorState({
 
     const result = await musicPageApi.saveMusicList(payload)
     if (!result.success) {
-      throw new Error(result.message || '保存失败')
+      throw new Error(result.message || t('Save failed', '保存失败'))
     }
   }, [isPlaylistLocked, musicPageApi])
 
@@ -64,7 +67,7 @@ export function useMusicEditorState({
 
   const createTrackFromUpload = useCallback((track) => {
     openCreateDialog(track)
-    setMessage(`已选择文件：${track.fileName}，请填写节目名称和演出人后保存。`)
+    setMessage(t(`Selected file: ${track.fileName}. Fill in the track name and performer before saving.`, `已选择文件：${track.fileName}，请填写节目名称和演出人后保存。`))
   }, [openCreateDialog, setMessage])
 
   const resetEditDialog = useCallback(() => {
@@ -97,10 +100,10 @@ export function useMusicEditorState({
       if (currentTrackId === trackId) {
         setCurrentTrackId(null)
       }
-      setMessage('删除并保存成功')
+      setMessage(t('Deleted and saved successfully.', '删除并保存成功'))
       closeDeleteDialog()
     } catch (error) {
-      setMessage(`删除失败：${error.message}`)
+      setMessage(t(`Delete failed: ${error.message}`, `删除失败：${error.message}`))
     }
   }, [closeDeleteDialog, currentTrackId, deletingTrack, saveCurrentMusicList, setCurrentTrackId, setMessage, setTracks, tracks])
 
@@ -109,7 +112,7 @@ export function useMusicEditorState({
     const programName = editProgramName.trim()
 
     if (!performer || !programName) {
-      setMessage('请先填写演出人和节目名，再生成口播词')
+      setMessage(t('Please fill in the performer and track name before generating host scripts.', '请先填写演出人和节目名，再生成口播词'))
       return
     }
 
@@ -123,9 +126,9 @@ export function useMusicEditorState({
       }
 
       setAiSuggestions(Array.isArray(result.suggestions) ? result.suggestions : [])
-      setMessage('已生成口播词候选，可点击下方示例直接填入')
+      setMessage(t('Host script suggestions are ready. Click a sample below to fill it in.', '已生成口播词候选，可点击下方示例直接填入'))
     } catch (error) {
-      setMessage(`生成口播词失败：${error.message}`)
+      setMessage(t(`Failed to generate host script: ${error.message}`, `生成口播词失败：${error.message}`))
     } finally {
       setIsGeneratingScript(false)
     }
@@ -142,7 +145,7 @@ export function useMusicEditorState({
     const programName = editProgramName.trim()
 
     if (!performer || !programName) {
-      setMessage('演出人和节目名不能为空')
+      setMessage(t('Performer and track name cannot be empty.', '演出人和节目名不能为空'))
       return
     }
 
@@ -162,7 +165,7 @@ export function useMusicEditorState({
         })
 
         if (!result.success) {
-          throw new Error(result.message || '新增失败')
+          throw new Error(result.message || t('Add failed', '新增失败'))
         }
 
         await refreshPageData()
@@ -171,19 +174,19 @@ export function useMusicEditorState({
         await saveCurrentMusicList(nextTracks)
         setTracks(nextTracks)
       }
-      setMessage(dialogMode === 'create' ? '新增并保存成功' : '修改并保存成功')
+      setMessage(dialogMode === 'create' ? t('Added and saved successfully.', '新增并保存成功') : t('Edited and saved successfully.', '修改并保存成功'))
       resetEditDialog()
     } catch (error) {
-      setMessage(`保存失败：${error.message}`)
+      setMessage(t(`Save failed: ${error.message}`, `保存失败：${error.message}`))
     }
   }, [dialogMode, editHostScript, editPerformer, editProgramName, editingTrack, musicPageApi, refreshPageData, resetEditDialog, saveCurrentMusicList, setMessage, setTracks, tracks])
 
   const onSaveMusicList = useCallback(() => {
     // 如果当前已打开演出且名称有效，则自动填入；否则清空
-    const defaultName = (currentShowName && currentShowName !== '未设置') ? currentShowName : '';
-    setSaveRecordName(defaultName);
+    const defaultName = (currentShowName && currentShowName !== t('Not set', '未设置')) ? currentShowName : ''
+    setSaveRecordName(defaultName)
     setSaveDialogOpen(true);
-  }, [currentShowName]);
+  }, [currentShowName, t])
 
   const closeSaveDialog = useCallback(() => {
     setSaveDialogOpen(false)
@@ -193,7 +196,7 @@ export function useMusicEditorState({
   const confirmSaveMusicList = useCallback(async () => {
     const trimmedName = saveRecordName.trim()
     if (!trimmedName) {
-      setMessage('保存失败：演出名称不能为空')
+      setMessage(t('Save failed: show name cannot be empty.', '保存失败：演出名称不能为空'))
       return
     }
 
@@ -209,13 +212,13 @@ export function useMusicEditorState({
         const officialTracks = tracks.filter(track => track.status === 'saved')
         
         // 如果没有任何正式节目，提示用户或阻止操作（视业务逻辑而定，此处暂按空列表处理或保留原逻辑）
-        if (officialTracks.length === 0) {
-           setMessage('当前演出暂无正式节目，无法执行重新生成存储操作')
+          if (officialTracks.length === 0) {
+            setMessage(t('There are no formal tracks in the current show, so it cannot be regenerated and saved.', '当前演出暂无正式节目，无法执行重新生成存储操作'))
            return
         }
         
         tracksToSave = officialTracks
-        setMessage('正在重新生成并存储正式节目列表...')
+        setMessage(t('Regenerating and saving the formal track list...', '正在重新生成并存储正式节目列表...'))
       }
 
       const payload = buildMusicListSavePayload(trimmedName, tracksToSave, true, isPlaylistLocked)
@@ -225,28 +228,28 @@ export function useMusicEditorState({
         throw new Error(result.message || '保存失败')
       }
 
-      setMessage(`已${isShowOpened ? '重新生成并' : ''}保存设为当前演出：${result.currentShow?.recordName || trimmedName}`)
+      setMessage(isShowOpened ? t(`Regenerated and saved as current show: ${result.currentShow?.recordName || trimmedName}`, `已重新生成并保存设为当前演出：${result.currentShow?.recordName || trimmedName}`) : t(`Saved as current show: ${result.currentShow?.recordName || trimmedName}`, `已保存设为当前演出：${result.currentShow?.recordName || trimmedName}`))
       await refreshPageData()
       closeSaveDialog()
     } catch (error) {
-      setMessage(`保存失败：${error.message}`)
+      setMessage(t(`Save failed: ${error.message}`, `保存失败：${error.message}`))
     }
   }, [closeSaveDialog, currentShowName, isPlaylistLocked, musicPageApi, refreshPageData, saveRecordName, setMessage, tracks])
 
   const onExportPdf = useCallback(() => {
-    const defaultName = currentShowName && currentShowName !== '未设置' ? currentShowName : '节目单'
+    const defaultName = currentShowName && currentShowName !== t('Not set', '未设置') ? currentShowName : t('Setlist', '节目单')
     setExportFileName(defaultName)
     setExportDialogOpen(true)
-  }, [currentShowName])
+  }, [currentShowName, t])
 
   const closeExportDialog = useCallback(() => {
     setExportDialogOpen(false)
-    setExportFileName('节目单')
-  }, [])
+    setExportFileName(t('Setlist', '节目单'))
+  }, [t])
 
   const confirmExportProgramSheetPdf = useCallback(async () => {
     try {
-      const recordName = exportFileName.trim() || '节目单'
+      const recordName = exportFileName.trim() || t('Setlist', '节目单')
       const blob = await musicPageApi.exportProgramSheetPdf({
         recordName,
         musicList: buildMusicListSavePayload(recordName, tracks, false, isPlaylistLocked).musicList,
@@ -255,10 +258,10 @@ export function useMusicEditorState({
       const downloadedName = `${recordName}.pdf`
       downloadBlobFile(blob, downloadedName)
 
-      setMessage(`PDF 导出成功：${downloadedName}`)
+      setMessage(t(`PDF exported successfully: ${downloadedName}`, `PDF 导出成功：${downloadedName}`))
       closeExportDialog()
     } catch (error) {
-      setMessage(`导出 PDF 失败：${getRequestErrorMessage(error, '请求失败')}`)
+      setMessage(t(`Failed to export PDF: ${getRequestErrorMessage(error, 'Request failed')}`, `导出 PDF 失败：${getRequestErrorMessage(error, '请求失败')}`))
     }
   }, [closeExportDialog, exportFileName, isPlaylistLocked, musicPageApi, setMessage, tracks])
 

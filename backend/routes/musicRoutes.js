@@ -72,7 +72,7 @@ router.get('/musiclist', (req, res) => {
     const output = buildTemporaryOnlyMusicListOutput('musiclist');
     return res.json({
       success: true,
-      message: `当前演出文件不存在，已清除当前演出状态：${error.message}`,
+      message: `The current show file does not exist, so the current show state has been cleared: ${error.message}`,
       ...toMusicListResponsePayload(output)
     });
   }
@@ -88,7 +88,7 @@ router.post('/musiclist/runtime-track', (req, res) => {
     if (!performer || !programName) {
       return res.status(400).json({
         success: false,
-        message: '演出人和节目名不能为空'
+        message: 'Performer and program name are required.'
       });
     }
 
@@ -98,7 +98,7 @@ router.post('/musiclist/runtime-track', (req, res) => {
       ? (() => {
           const filePath = getShowFilePath(currentShow.fileName);
           if (!fs.existsSync(filePath)) {
-            throw new Error('当前演出文件不存在');
+            throw new Error('The current show file does not exist.');
           }
 
           const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
@@ -126,7 +126,7 @@ router.post('/musiclist/runtime-track', (req, res) => {
       if (hasExistingTrack) {
         return res.status(409).json({
           success: false,
-          message: '该音频文件对应的节目已存在，无需重复新增'
+          message: 'A program for this audio file already exists; duplicate creation is not needed.'
         });
       }
     }
@@ -150,14 +150,14 @@ router.post('/musiclist/runtime-track', (req, res) => {
 
     return res.json({
       success: true,
-      message: currentShow?.fileName ? '节目已加入当前演出' : '节目已加入临时列表',
+      message: currentShow?.fileName ? 'The program has been added to the current show.' : 'The program has been added to the temporary list.',
       track: toTrackResponse(nextTrack),
       musicList: toMusicListResponsePayload(savedOutput).musicList
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: `新增节目失败：${error.message}`
+      message: `Failed to add program: ${error.message}`
     });
   }
 });
@@ -173,7 +173,7 @@ router.post('/musiclist/save', (req, res) => {
       : ((requestedFileName === 'musiclist.json' && activeCurrentShow?.fileName) ? activeCurrentShow.fileName : requestedFileName);
 
     if (!fileName) {
-      return res.status(400).json({ success: false, message: '请填写有效的演出文件名' });
+      return res.status(400).json({ success: false, message: 'Please provide a valid show file name.' });
     }
 
     const runtimeList = readSavedMusicList();
@@ -211,13 +211,13 @@ router.post('/musiclist/save', (req, res) => {
 
     return res.json({
       success: true,
-      message: shouldSetCurrent ? '演出保存成功，并已设为当前演出' : '保存成功',
+      message: shouldSetCurrent ? 'The show has been saved and set as the current show.' : 'Saved successfully.',
       fileName,
       currentShow: nextCurrentShow,
       filePath: fileName === 'musiclist.json' ? '' : `/v1/show_record/${encodeURIComponent(fileName)}`
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: `保存音乐列表失败：${error.message}` });
+    return res.status(500).json({ success: false, message: `Failed to save music list: ${error.message}` });
   }
 });
 
@@ -229,7 +229,7 @@ router.get('/file/:token', (req, res) => {
     if (!fileName) {
       return res.status(400).json({
         success: false,
-        message: '文件标识不能为空'
+        message: 'File token is required.'
       });
     }
 
@@ -237,7 +237,7 @@ router.get('/file/:token', (req, res) => {
     if (!filePath) {
       return res.status(404).json({
         success: false,
-        message: '音频文件不存在'
+        message: 'Audio file not found.'
       });
     }
 
@@ -245,7 +245,7 @@ router.get('/file/:token', (req, res) => {
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: `获取音频文件失败：${error.message}`
+      message: `Failed to fetch audio file: ${error.message}`
     });
   }
 });
@@ -256,7 +256,7 @@ router.post('/file-url', (req, res) => {
     if (!fileName) {
       return res.status(400).json({
         success: false,
-        message: 'fileName 不能为空'
+        message: 'fileName is required.'
       });
     }
 
@@ -264,7 +264,7 @@ router.post('/file-url', (req, res) => {
     if (!filePath) {
       return res.status(404).json({
         success: false,
-        message: '音频文件不存在'
+        message: 'Audio file not found.'
       });
     }
 
@@ -280,7 +280,7 @@ router.post('/file-url', (req, res) => {
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: `获取播放地址失败：${error.message}`
+      message: `Failed to get playback URL: ${error.message}`
     });
   }
 });
@@ -291,7 +291,7 @@ router.post('/preview-source', (req, res) => {
     if (!fileName) {
       return res.status(400).json({
         success: false,
-        message: 'fileName 不能为空'
+        message: 'fileName is required.'
       });
     }
 
@@ -299,7 +299,7 @@ router.post('/preview-source', (req, res) => {
     if (!filePath) {
       return res.status(404).json({
         success: false,
-        message: '音频文件不存在'
+        message: 'Audio file not found.'
       });
     }
 
@@ -316,7 +316,7 @@ router.post('/preview-source', (req, res) => {
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: `获取预听地址失败：${error.message}`
+      message: `Failed to get preview URL: ${error.message}`
     });
   }
 });
@@ -377,7 +377,7 @@ router.post('/backend-play', async (req, res) => {
     if (!savedName) {
       return res.status(400).json({
         success: false,
-        message: 'fileName 不能为空'
+        message: 'fileName is required.'
       });
     }
 
@@ -385,7 +385,7 @@ router.post('/backend-play', async (req, res) => {
     if (!filePath) {
       return res.status(404).json({
         success: false,
-        message: '音频文件不存在'
+        message: 'Audio file not found.'
       });
     }
 
@@ -399,13 +399,13 @@ router.post('/backend-play', async (req, res) => {
 
     return res.json({
       success: true,
-      message: '后端开始播放',
+      message: 'Backend playback started.',
       state
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: `后端播放失败：${error.message}`
+      message: `Backend playback failed: ${error.message}`
     });
   }
 });
@@ -424,7 +424,7 @@ router.post('/backend-control', async (req, res) => {
     } else {
       return res.status(400).json({
         success: false,
-        message: '无效操作，仅支持 pause / resume / stop'
+        message: 'Invalid action; only pause / resume / stop are supported.'
       });
     }
 
@@ -435,7 +435,7 @@ router.post('/backend-control', async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: `后端播放控制失败：${error.message}`
+      message: `Backend playback control failed: ${error.message}`
     });
   }
 });
@@ -446,7 +446,7 @@ router.post('/backend-volume', async (req, res) => {
     if (!Number.isFinite(volume)) {
       return res.status(400).json({
         success: false,
-        message: 'volume 必须是有效数字'
+        message: 'Volume must be a valid number.'
       });
     }
 
@@ -458,7 +458,7 @@ router.post('/backend-volume', async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: `设置后端音量失败：${error.message}`
+      message: `Failed to set backend volume: ${error.message}`
     });
   }
 });
@@ -485,7 +485,7 @@ router.get('/show/current', (req, res) => {
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: `获取当前演出失败：${error.message}`
+      message: `Failed to get current show: ${error.message}`
     });
   }
 });
@@ -501,7 +501,7 @@ router.get('/show/current-program', (req, res) => {
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: `读取当前节目失败：${error.message}`
+      message: `Failed to read current program: ${error.message}`
     });
   }
 });
@@ -516,13 +516,13 @@ router.post('/show/current-program', (req, res) => {
 
     return res.json({
       success: true,
-      message: '当前节目更新成功',
+      message: 'Current program updated successfully.',
       currentShow
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: `更新当前节目失败：${error.message}`
+      message: `Failed to update current program: ${error.message}`
     });
   }
 });
@@ -542,7 +542,7 @@ router.get('/show/current-state', (req, res) => {
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: `获取当前状态失败：${error.message}`
+      message: `Failed to get current state: ${error.message}`
     });
   }
 });
@@ -553,7 +553,7 @@ router.post('/show/current-lock', (req, res) => {
     if (!currentShow?.fileName) {
       return res.status(400).json({
         success: false,
-        message: '当前没有已打开的演出，无法设置锁定状态'
+        message: 'There is no currently opened show, so the lock state cannot be set.'
       });
     }
 
@@ -563,7 +563,7 @@ router.post('/show/current-lock', (req, res) => {
       clearCurrentShowState();
       return res.status(404).json({
         success: false,
-        message: '当前演出文件不存在，已清除当前演出状态'
+        message: 'The current show file does not exist, so the current show state has been cleared.'
       });
     }
 
@@ -581,13 +581,13 @@ router.post('/show/current-lock', (req, res) => {
 
     return res.json({
       success: true,
-      message: locked ? '当前演出已锁定' : '当前演出已解锁',
+      message: locked ? 'The current show has been locked.' : 'The current show has been unlocked.',
       currentShow: nextCurrentShow
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: `更新当前演出锁定状态失败：${error.message}`
+      message: `Failed to update current show lock state: ${error.message}`
     });
   }
 });
@@ -599,7 +599,7 @@ router.post('/show/current/close', (req, res) => {
       writeRuntimeMusicList([], 'musiclist');
       return res.json({
         success: true,
-        message: '当前没有已打开的演出，临时列表已清空'
+        message: 'There is no currently opened show, so the temporary list has been cleared.'
       });
     }
 
@@ -608,12 +608,12 @@ router.post('/show/current/close', (req, res) => {
 
     return res.json({
       success: true,
-      message: `当前演出《${currentShow.recordName || decodeJsonRecordName(currentShow.fileName)}》已关闭，临时列表已清空`
+      message: `The current show "${currentShow.recordName || decodeJsonRecordName(currentShow.fileName)}" has been closed, and the temporary list has been cleared.`
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: `关闭当前演出失败：${error.message}`
+      message: `Failed to close the current show: ${error.message}`
     });
   }
 });
@@ -629,7 +629,7 @@ router.get('/shows', (req, res) => {
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: `获取演出列表失败：${error.message}`
+      message: `Failed to get show list: ${error.message}`
     });
   }
 });
@@ -640,7 +640,7 @@ router.delete('/show/:fileName', (req, res) => {
     if (!fileName) {
       return res.status(400).json({
         success: false,
-        message: '请选择有效的演出文件'
+        message: 'Please select a valid show file.'
       });
     }
 
@@ -659,14 +659,14 @@ router.delete('/show/:fileName', (req, res) => {
 
     return res.json({
       success: true,
-      message: isCurrentShow ? '历史演出删除成功，当前演出状态已清空' : '历史演出删除成功',
+      message: isCurrentShow ? 'The historical show was deleted and the current show state was cleared.' : 'The historical show was deleted successfully.',
       deletedFileName: fileName,
       clearedCurrentShow: isCurrentShow
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: `删除历史演出失败：${error.message}`
+      message: `Failed to delete historical show: ${error.message}`
     });
   }
 });
@@ -678,7 +678,7 @@ router.post('/show/current', (req, res) => {
     if (!fileName) {
       return res.status(400).json({
         success: false,
-        message: '请选择有效的演出文件'
+        message: 'Please select a valid show file.'
       });
     }
 
@@ -686,7 +686,7 @@ router.post('/show/current', (req, res) => {
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({
         success: false,
-        message: '演出文件不存在'
+        message: 'Show file not found.'
       });
     }
 
@@ -702,13 +702,13 @@ router.post('/show/current', (req, res) => {
 
     return res.json({
       success: true,
-      message: '当前演出切换成功',
+      message: 'Current show switched successfully.',
       currentShow
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: `切换当前演出失败：${error.message}`
+      message: `Failed to switch current show: ${error.message}`
     });
   }
 });
@@ -718,10 +718,10 @@ router.post('/show/current', (req, res) => {
 router.post('/musiclist/export-pdf', (req, res) => {
   try {
     const list = Array.isArray(req.body?.musicList) ? req.body.musicList.map((item, index) => normalizeTrack(item, index)) : [];
-    const rawRecordName = String(req.body?.recordName || '节目单').trim();
-    const safeRecordName = rawRecordName || '节目单';
-    const normalizedFileName = normalizeJsonFileName(safeRecordName) || '节目单.json';
-    const pdfFileName = `${decodeJsonRecordName(normalizedFileName) || '节目单'}.pdf`;
+    const rawRecordName = String(req.body?.recordName || 'Setlist').trim();
+    const safeRecordName = rawRecordName || 'Setlist';
+    const normalizedFileName = normalizeJsonFileName(safeRecordName) || 'Setlist.json';
+    const pdfFileName = `${decodeJsonRecordName(normalizedFileName) || 'Setlist'}.pdf`;
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(pdfFileName)}`);
@@ -733,12 +733,12 @@ router.post('/musiclist/export-pdf', (req, res) => {
     }
 
     doc.pipe(res);
-    renderProgramSheetPdf(doc, list, `${safeRecordName} 节目单`);
+    renderProgramSheetPdf(doc, list, `${safeRecordName} Setlist`);
     doc.end();
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: `导出 PDF 失败：${error.message}`
+      message: `Failed to export PDF: ${error.message}`
     });
   }
 });

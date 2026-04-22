@@ -77,7 +77,7 @@ function createStartupMonitor(options = {}) {
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       try {
         await connectPm2(pm2);
-        logger.log('[PM2] 已连接到 PM2 进程管理器');
+        logger.log('[PM2] Connected to the PM2 process manager');
 
         try {
           const list = await listPm2(pm2);
@@ -86,9 +86,9 @@ function createStartupMonitor(options = {}) {
 
           if (missing.length === 0) {
             appNames.forEach((app) => {
-              logger.log(`[PM2] 服务运行成功: ${app}`);
+              logger.log(`[PM2] Service is running successfully: ${app}`);
             });
-            logger.log('[PM2] 所有辅助服务已正常运行');
+            logger.log('[PM2] All auxiliary services are running normally');
             pm2.disconnect();
             return;
           }
@@ -98,7 +98,7 @@ function createStartupMonitor(options = {}) {
             if (startErr) {
               logger.warn('[PM2] failed to start', app, startErr && startErr.message);
             } else {
-              logger.log(`[PM2] 服务启动成功: ${app}`);
+              logger.log(`[PM2] Service started successfully: ${app}`);
             }
           });
 
@@ -107,9 +107,9 @@ function createStartupMonitor(options = {}) {
           const hasFailure = results.some(({ startErr }) => Boolean(startErr));
           if (!hasFailure) {
             results.forEach(({ app }) => {
-              logger.log(`[PM2] 服务运行成功: ${app}`);
+              logger.log(`[PM2] Service is running successfully: ${app}`);
             });
-            logger.log('[PM2] 所有缺失的辅助服务已启动完成');
+            logger.log('[PM2] All missing auxiliary services have been started');
             return;
           }
 
@@ -154,7 +154,7 @@ function createStartupMonitor(options = {}) {
     setTimeout(() => {
       Promise.all([ensurePm2AppsRunning()])
         .then(() => {
-          logger.log('[Startup] 后续启动监测流程已全部完成');
+          logger.log('[Startup] Follow-up startup monitoring has completed');
         })
         .catch((error) => {
           logger.warn('[Startup] unexpected startup monitor error:', error && error.message);

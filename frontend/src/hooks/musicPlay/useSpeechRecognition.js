@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 
+import { useLanguage } from '../../context/languageContext'
+import { localizeText } from '../../utils/language'
+
 function getSpeechRecognitionCtor() {
   if (typeof window === 'undefined') {
     return null
@@ -8,20 +11,20 @@ function getSpeechRecognitionCtor() {
   return window.SpeechRecognition || window.webkitSpeechRecognition || null
 }
 
-function buildSpeechSupportHint(supported) {
+function buildSpeechSupportHint(language, supported) {
   const userAgent = typeof navigator === 'undefined' ? '' : navigator.userAgent || ''
   const isWindows = /Windows/i.test(userAgent)
   const isChromeOrEdge = /Chrome|Edg/i.test(userAgent)
 
   if (!supported) {
-    return '当前浏览器不支持语音识别。建议使用 Windows 下的 Edge 或 Chrome。'
+    return localizeText(language, 'This browser does not support speech recognition. Use Edge or Chrome on Windows.', '当前浏览器不支持语音识别。建议使用 Windows 下的 Edge 或 Chrome。')
   }
 
   if (isWindows && !isChromeOrEdge) {
-    return '当前浏览器语音支持可能不稳定，建议使用 Windows 下的 Edge 或 Chrome。'
+    return localizeText(language, 'Speech recognition may be unstable in this browser. Use Edge or Chrome on Windows.', '当前浏览器语音支持可能不稳定，建议使用 Windows 下的 Edge 或 Chrome。')
   }
 
-  return '当前浏览器支持语音识别。'
+  return localizeText(language, 'This browser supports speech recognition.', '当前浏览器支持语音识别。')
 }
 
 function joinSpeechText(...parts) {
@@ -38,6 +41,7 @@ export function useSpeechRecognition({
   refineSpeechText,
   onMessage,
 }) {
+  const { language } = useLanguage()
   const recognitionRef = useRef(null)
   const speechBaseTextRef = useRef('')
   const speechFinalTextRef = useRef('')
@@ -55,7 +59,7 @@ export function useSpeechRecognition({
   const initialSpeechSupported = Boolean(getSpeechRecognitionCtor())
   const [listeningField, setListeningField] = useState('')
   const [speechSupported] = useState(initialSpeechSupported)
-  const [speechSupportHint] = useState(buildSpeechSupportHint(initialSpeechSupported))
+  const [speechSupportHint] = useState(buildSpeechSupportHint(language, initialSpeechSupported))
 
   useEffect(() => {
     latestOptionsRef.current = {
@@ -129,12 +133,12 @@ export function useSpeechRecognition({
   const handleSpeechInput = (field) => {
     const SpeechRecognition = getSpeechRecognitionCtor()
     if (!SpeechRecognition) {
-      latestOptionsRef.current.onMessage('当前浏览器不支持语音转文字，请使用键盘输入。')
+      latestOptionsRef.current.onMessage(localizeText(language, 'Speech-to-text is not supported in this browser. Please use keyboard input.', '当前浏览器不支持语音转文字，请使用键盘输入。'))
       return
     }
 
     if (listeningField && listeningField !== field) {
-      latestOptionsRef.current.onMessage('已有语音识别进行中，请稍后再试。')
+      latestOptionsRef.current.onMessage(localizeText(language, 'Speech recognition is already running. Please try again later.', '已有语音识别进行中，请稍后再试。'))
       return
     }
 
@@ -147,10 +151,10 @@ export function useSpeechRecognition({
 
     if (latestOptionsRef.current.speechInputMode === 'ai' && typeof navigator !== 'undefined' && !navigator.onLine) {
       if (!latestOptionsRef.current.offlineFallbackEnabled) {
-        latestOptionsRef.current.onMessage('当前无网络，且设置为不回退本机识别，请切换到本机识别后重试。')
+        latestOptionsRef.current.onMessage(localizeText(language, 'You are offline and local fallback is disabled. Switch to local recognition and try again.', '当前无网络，且设置为不回退本机识别，请切换到本机识别后重试。'))
         return
       }
-      latestOptionsRef.current.onMessage('当前无网络，已自动回退到本机语音识别。')
+      latestOptionsRef.current.onMessage(localizeText(language, 'You are offline, so the app has fallen back to local speech recognition automatically.', '当前无网络，已自动回退到本机语音识别。'))
     }
 
     const recognition = new SpeechRecognition()
@@ -197,7 +201,7 @@ export function useSpeechRecognition({
     }
 
     recognition.onerror = () => {
-      latestOptionsRef.current.onMessage('语音识别失败，请重试或改用键盘输入。')
+      latestOptionsRef.current.onMessage(localizeText(language, 'Speech recognition failed. Try again or use keyboard input instead.', '语音识别失败，请重试或改用键盘输入。'))
       setListeningField('')
     }
 

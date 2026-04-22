@@ -15,7 +15,7 @@ router.get('/rtp-capabilities', async (req, res) => {
     const rtpCapabilities = await mediasoupService.getRouterRtpCapabilities();
     return res.json({ success: true, rtpCapabilities });
   } catch (error) {
-    return handleError(res, error, '获取 RTP 能力失败');
+    return handleError(res, error, 'Failed to get RTP capabilities');
   }
 });
 
@@ -32,7 +32,7 @@ router.post('/sessions', async (req, res) => {
       state: session
     });
   } catch (error) {
-    return handleError(res, error, '创建 WebRTC 会话失败');
+    return handleError(res, error, 'Failed to create WebRTC session');
   }
 });
 
@@ -43,7 +43,7 @@ router.get('/sessions', async (req, res) => {
       sessions: mediasoupService.listSessions()
     });
   } catch (error) {
-    return handleError(res, error, '获取 WebRTC 会话列表失败');
+    return handleError(res, error, 'Failed to get WebRTC session list');
   }
 });
 
@@ -51,12 +51,12 @@ router.get('/sessions/:sessionId', async (req, res) => {
   try {
     const session = mediasoupService.getSessionState(req.params.sessionId);
     if (!session) {
-      return res.status(404).json({ success: false, message: '会话不存在' });
+      return res.status(404).json({ success: false, message: 'Session not found.' });
     }
 
     return res.json({ success: true, session });
   } catch (error) {
-    return handleError(res, error, '获取 WebRTC 会话失败');
+    return handleError(res, error, 'Failed to get WebRTC session');
   }
 });
 
@@ -65,7 +65,7 @@ router.get('/sessions/:sessionId/producers', async (req, res) => {
     const producers = mediasoupService.listProducers(req.params.sessionId);
     return res.json({ success: true, producers });
   } catch (error) {
-    return handleError(res, error, '获取 Producer 列表失败');
+    return handleError(res, error, 'Failed to get Producer list');
   }
 });
 
@@ -74,7 +74,7 @@ router.delete('/sessions/:sessionId', async (req, res) => {
     const removed = await mediasoupService.closeSession(req.params.sessionId);
     return res.json({ success: true, removed });
   } catch (error) {
-    return handleError(res, error, '关闭 WebRTC 会话失败');
+    return handleError(res, error, 'Failed to close WebRTC session');
   }
 });
 
@@ -82,7 +82,7 @@ router.post('/transports', async (req, res) => {
   try {
     const sessionId = String(req.body?.sessionId || '').trim();
     if (!sessionId) {
-      return res.status(400).json({ success: false, message: 'sessionId 不能为空' });
+      return res.status(400).json({ success: false, message: 'sessionId is required.' });
     }
 
     const direction = String(req.body?.direction || 'send').trim();
@@ -90,7 +90,7 @@ router.post('/transports', async (req, res) => {
 
     return res.json({ success: true, transport });
   } catch (error) {
-    return handleError(res, error, '创建 WebRTC 传输失败');
+    return handleError(res, error, 'Failed to create WebRTC transport');
   }
 });
 
@@ -98,13 +98,13 @@ router.post('/transports/:transportId/connect', async (req, res) => {
   try {
     const dtlsParameters = req.body?.dtlsParameters;
     if (!dtlsParameters) {
-      return res.status(400).json({ success: false, message: 'dtlsParameters 不能为空' });
+      return res.status(400).json({ success: false, message: 'dtlsParameters is required.' });
     }
 
     const result = await mediasoupService.connectTransport(req.params.transportId, dtlsParameters);
     return res.json({ success: true, result });
   } catch (error) {
-    return handleError(res, error, '连接 WebRTC 传输失败');
+    return handleError(res, error, 'Failed to connect WebRTC transport');
   }
 });
 
@@ -112,12 +112,12 @@ router.get('/transports/:transportId', async (req, res) => {
   try {
     const transport = mediasoupService.getTransportState(req.params.transportId);
     if (!transport) {
-      return res.status(404).json({ success: false, message: '传输不存在' });
+      return res.status(404).json({ success: false, message: 'Transport not found.' });
     }
 
     return res.json({ success: true, transport });
   } catch (error) {
-    return handleError(res, error, '获取 WebRTC 传输状态失败');
+    return handleError(res, error, 'Failed to get WebRTC transport state');
   }
 });
 
@@ -127,11 +127,11 @@ router.post('/transports/:transportId/produce', async (req, res) => {
     const rtpParameters = req.body?.rtpParameters;
 
     if (!['audio', 'video'].includes(kind)) {
-      return res.status(400).json({ success: false, message: 'kind 仅支持 audio/video' });
+      return res.status(400).json({ success: false, message: 'kind only supports audio/video.' });
     }
 
     if (!rtpParameters) {
-      return res.status(400).json({ success: false, message: 'rtpParameters 不能为空' });
+      return res.status(400).json({ success: false, message: 'rtpParameters is required.' });
     }
 
     const result = await mediasoupService.produce(req.params.transportId, {
@@ -142,7 +142,7 @@ router.post('/transports/:transportId/produce', async (req, res) => {
 
     return res.json({ success: true, producer: result });
   } catch (error) {
-    return handleError(res, error, '创建 Producer 失败');
+    return handleError(res, error, 'Failed to create Producer');
   }
 });
 
@@ -152,11 +152,11 @@ router.post('/transports/:transportId/consume', async (req, res) => {
     const rtpCapabilities = req.body?.rtpCapabilities;
 
     if (!producerId) {
-      return res.status(400).json({ success: false, message: 'producerId 不能为空' });
+      return res.status(400).json({ success: false, message: 'producerId is required.' });
     }
 
     if (!rtpCapabilities) {
-      return res.status(400).json({ success: false, message: 'rtpCapabilities 不能为空' });
+      return res.status(400).json({ success: false, message: 'rtpCapabilities is required.' });
     }
 
     const result = await mediasoupService.consume(req.params.transportId, {
@@ -166,7 +166,7 @@ router.post('/transports/:transportId/consume', async (req, res) => {
 
     return res.json({ success: true, consumer: result });
   } catch (error) {
-    return handleError(res, error, '创建 Consumer 失败');
+    return handleError(res, error, 'Failed to create Consumer');
   }
 });
 

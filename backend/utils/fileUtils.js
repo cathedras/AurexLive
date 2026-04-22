@@ -70,8 +70,8 @@ function parseTrackMeta(savedName) {
   }
 
   return {
-    performer: '未知演出人',
-    programName: '未命名节目',
+    performer: 'Unknown performer',
+    programName: 'Untitled program',
     fileName
   };
 }

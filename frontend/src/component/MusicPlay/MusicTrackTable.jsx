@@ -1,6 +1,7 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import * as Tooltip from '@radix-ui/react-tooltip'
 import { Download, Headphones, LoaderCircle, Lock, LockOpen, MoreHorizontal, Pause, Pencil, Play, Plus, Printer, RefreshCw, Save, Trash2, X } from 'lucide-react'
+import { useLanguage } from '../../context/languageContext'
 
 function HeaderActionButton({ label, active = false, onClick, children }) {
   return (
@@ -90,45 +91,47 @@ function MusicTrackTable({
   getTrackDeleteTip,
   onDeleteTrack,
 }) {
+  const { t } = useLanguage()
+
   return (
     <Tooltip.Provider delayDuration={150}>
       <div className="music-list-wrap">
         <div className="music-list-header">
           <div className="music-list-title">
-            音乐文件列表（当前演出：{currentShowName}）
+            {t(`Music files (current show: ${currentShowName})`, `音乐文件列表（当前演出：${currentShowName}）`)}
             {hasCurrentShow && (
               <span className={`playlist-lock-badge ${isPlaylistLocked ? 'playlist-lock-badge-locked' : 'playlist-lock-badge-unlocked'}`}>
-                {isPlaylistLocked ? '节目单已锁定' : '节目单未锁定'}
+                {isPlaylistLocked ? t('Playlist locked', '节目单已锁定') : t('Playlist unlocked', '节目单未锁定')}
               </span>
             )}
           </div>
           <div className="music-list-actions">
             {!isPlaylistLocked && (
-              <HeaderActionButton label="新增节目" onClick={onOpenCreateDialog}>
+              <HeaderActionButton label={t('Add track', '新增节目')} onClick={onOpenCreateDialog}>
                 <Plus className="header-action-icon" strokeWidth={1.8} />
               </HeaderActionButton>
             )}
 
             {hasCurrentShow && (
-              <HeaderActionButton label={isPlaylistLocked ? '解除节目单锁定' : '锁定节目单'} active={isPlaylistLocked} onClick={onTogglePlaylistLock}>
+              <HeaderActionButton label={isPlaylistLocked ? t('Unlock playlist', '解除节目单锁定') : t('Lock playlist', '锁定节目单')} active={isPlaylistLocked} onClick={onTogglePlaylistLock}>
                 {isPlaylistLocked
                   ? <LockOpen className="header-action-icon" strokeWidth={1.8} />
                   : <Lock className="header-action-icon" strokeWidth={1.8} />}
               </HeaderActionButton>
             )}
 
-            <HeaderActionButton label="刷新列表" onClick={onRefreshPageData}>
+            <HeaderActionButton label={t('Refresh list', '刷新列表')} onClick={onRefreshPageData}>
               <RefreshCw className="header-action-icon" strokeWidth={1.8} />
             </HeaderActionButton>
 
             {!isPlaylistLocked && (
-              <HeaderActionButton label="保存演出" onClick={onSaveMusicList}>
+              <HeaderActionButton label={t('Save show', '保存演出')} onClick={onSaveMusicList}>
                 <Save className="header-action-icon" strokeWidth={1.8} />
               </HeaderActionButton>
             )}
 
             {!isPlaylistLocked && hasCurrentShow && (
-              <HeaderActionButton label="关闭当前演出" onClick={onCloseCurrentShow}>
+              <HeaderActionButton label={t('Close current show', '关闭当前演出')} onClick={onCloseCurrentShow}>
                 <X className="header-action-icon" strokeWidth={1.8} />
               </HeaderActionButton>
             )}
@@ -141,7 +144,7 @@ function MusicTrackTable({
                       <button
                         type="button"
                         className="header-icon-btn"
-                        aria-label="更多操作"
+                        aria-label={t('More actions', '更多操作')}
                       >
                         <span className="header-icon-btn-graphic" aria-hidden="true">
                           <MoreHorizontal className="header-action-icon" strokeWidth={1.8} />
@@ -151,7 +154,7 @@ function MusicTrackTable({
                   </Tooltip.Trigger>
                   <Tooltip.Portal>
                     <Tooltip.Content className="music-toolbar-tooltip" side="top" sideOffset={10}>
-                      更多操作
+                      {t('More actions', '更多操作')}
                       <Tooltip.Arrow className="music-toolbar-tooltip-arrow" />
                     </Tooltip.Content>
                   </Tooltip.Portal>
@@ -163,13 +166,13 @@ function MusicTrackTable({
                       <span className="music-action-menu-icon" aria-hidden="true">
                         <Printer size={16} strokeWidth={1.8} />
                       </span>
-                      <span>打印节目单</span>
+                      <span>{t('Print setlist', '打印节目单')}</span>
                     </DropdownMenu.Item>
                     <DropdownMenu.Item className="music-action-menu-item" onSelect={onExportPdf}>
                       <span className="music-action-menu-icon" aria-hidden="true">
                         <Download size={16} strokeWidth={1.8} />
                       </span>
-                      <span>导出 PDF</span>
+                      <span>{t('Export PDF', '导出 PDF')}</span>
                     </DropdownMenu.Item>
                   </DropdownMenu.Content>
                 </DropdownMenu.Portal>
@@ -180,12 +183,12 @@ function MusicTrackTable({
       <table className="music-table">
         <thead>
           <tr>
-            <th>序号</th>
-            <th>演出人</th>
-            <th>节目名</th>
-            <th>主持人口播词</th>
-            <th>音乐文件名</th>
-            <th>操作</th>
+            <th>{t('No.', '序号')}</th>
+            <th>{t('Performer', '演出人')}</th>
+            <th>{t('Track name', '节目名')}</th>
+            <th>{t('Host script', '主持人口播词')}</th>
+            <th>{t('Audio file', '音乐文件名')}</th>
+            <th>{t('Actions', '操作')}</th>
           </tr>
         </thead>
         <tbody>
@@ -200,15 +203,15 @@ function MusicTrackTable({
               className={`${draggingId === track.id ? 'dragging-row' : ''} ${track.isTemporary ? 'temporary-track-row' : ''}`.trim()}
             >
               <td>{index + 1}</td>
-              <td>{track.performer || (track.isTemporary ? '待填写' : '-')}</td>
+              <td>{track.performer || (track.isTemporary ? t('To be filled', '待填写') : '-')}</td>
               <td>
                 <div className="music-program-cell">
-                  <span>{track.programName || (track.isTemporary ? '待新增节目' : '-')}</span>
-                  {track.isTemporary && <span className="temporary-track-tag">临时</span>}
+                  <span>{track.programName || (track.isTemporary ? t('To be added', '待新增节目') : '-')}</span>
+                  {track.isTemporary && <span className="temporary-track-tag">{t('Temp', '临时')}</span>}
                 </div>
               </td>
               <td className="music-host-script" title={track.hostScript}>
-                {track.hostScript || (track.isTemporary ? '新上传文件，尚未加入正式节目单。' : '-')}
+                {track.hostScript || (track.isTemporary ? t('This newly uploaded file has not been added to the formal playlist yet.', '新上传文件，尚未加入正式节目单。') : '-')}
               </td>
               <td className="music-file-name" title={track.fileName}>{track.fileName}</td>
               <td className="music-action-cell">

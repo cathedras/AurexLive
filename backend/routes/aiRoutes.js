@@ -3,15 +3,15 @@ const express = require('express');
 const router = express.Router();
 
 function buildFallbackSuggestions(performer, programName, count = 3) {
-  const safePerformer = performer || '演出团队';
-  const safeProgramName = programName || '精彩节目';
+  const safePerformer = performer || 'The production team';
+  const safeProgramName = programName || 'the next performance';
 
   const templates = [
-    `下面请欣赏由${safePerformer}带来的《${safeProgramName}》，掌声有请。`,
-    `接下来登场的是${safePerformer}，他们将为我们呈现《${safeProgramName}》，请大家欢迎。`,
-    `现在为大家带来节目《${safeProgramName}》，表演者是${safePerformer}，请欣赏。`,
-    `让我们以热烈掌声欢迎${safePerformer}，为大家带来《${safeProgramName}》。`,
-    `下一节目《${safeProgramName}》即将开始，表演者${safePerformer}已经准备就绪。`
+    `Now please enjoy "${safeProgramName}" presented by ${safePerformer}. Let's give them a warm round of applause.`,
+    `${safePerformer} will take the stage next with "${safeProgramName}". Please welcome them.`,
+    `We are now bringing you "${safeProgramName}", performed by ${safePerformer}. Please enjoy the show.`,
+    `Let's warmly welcome ${safePerformer} to present "${safeProgramName}".`,
+    `The next performance, "${safeProgramName}", is about to begin. ${safePerformer} is ready to go.`
   ];
 
   return templates.slice(0, Math.max(1, Math.min(5, count)));
@@ -29,11 +29,11 @@ async function generateByOpenAICompatibleApi({ performer, programName, count }) 
   const endpoint = `${baseUrl.replace(/\/$/, '')}/chat/completions`;
 
   const prompt = [
-    '你是晚会主持人口播词助手。',
-    `请基于以下信息生成${count}条不同风格的主持人口播词。`,
-    `演出人：${performer || '未知演出人'}`,
-    `节目名：${programName || '未命名节目'}`,
-    '要求：每条不超过60字，语气自然，适合舞台报幕，只返回JSON数组字符串。'
+    'You are an assistant for event host announcement lines.',
+    `Generate ${count} host announcement lines in different styles based on the following information.`,
+    `Performer: ${performer || 'Unknown performer'}`,
+    `Program: ${programName || 'Untitled program'}`,
+    'Requirements: each line must be no more than 60 Chinese characters in the original design, use a natural tone suitable for stage announcements, and return only a JSON array string.'
   ].join('\n');
 
   const response = await fetch(endpoint, {
@@ -46,14 +46,14 @@ async function generateByOpenAICompatibleApi({ performer, programName, count }) 
       model,
       temperature: 0.8,
       messages: [
-        { role: 'system', content: '你是专业中文主持稿助手。' },
+        { role: 'system', content: 'You are a professional assistant for Chinese host scripts.' },
         { role: 'user', content: prompt }
       ]
     })
   });
 
   if (!response.ok) {
-    throw new Error(`AI 接口调用失败（${response.status}）`);
+    throw new Error(`AI API call failed (${response.status})`);
   }
 
   const result = await response.json();
@@ -90,10 +90,10 @@ async function refineSpeechTextByOpenAICompatibleApi({ text, field }) {
 
   const endpoint = `${baseUrl.replace(/\/$/, '')}/chat/completions`;
   const userPrompt = [
-    '你是中文语音识别文本纠错助手。',
-    `字段类型：${field || '通用'}`,
-    `原始文本：${text}`,
-    '请修正常见同音字与标点，不改变原意，不扩写，不解释，只输出最终文本。'
+    'You are an assistant for correcting Chinese speech recognition text.',
+    `Field type: ${field || 'general'}`,
+    `Original text: ${text}`,
+    'Please fix common homophones and punctuation without changing the original meaning, without expanding or explaining, and return only the final text.'
   ].join('\n');
 
   const response = await fetch(endpoint, {
@@ -106,14 +106,14 @@ async function refineSpeechTextByOpenAICompatibleApi({ text, field }) {
       model,
       temperature: 0.2,
       messages: [
-        { role: 'system', content: '你只返回纠错后的文本。' },
+        { role: 'system', content: 'Return only the corrected text.' },
         { role: 'user', content: userPrompt }
       ]
     })
   });
 
   if (!response.ok) {
-    throw new Error(`AI 接口调用失败（${response.status}）`);
+    throw new Error(`AI API call failed (${response.status})`);
   }
 
   const result = await response.json();
@@ -130,7 +130,7 @@ router.post('/host-script-suggestions', async (req, res) => {
     if (!performer || !programName) {
       return res.status(400).json({
         success: false,
-        message: '演出人和节目名不能为空'
+        message: 'Performer and program name are required.'
       });
     }
 
@@ -144,7 +144,7 @@ router.post('/host-script-suggestions', async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: `生成口播词失败：${error.message}`
+      message: `Failed to generate host script lines: ${error.message}`
     });
   }
 });
@@ -157,7 +157,7 @@ router.post('/speech-refine-text', async (req, res) => {
     if (!text) {
       return res.status(400).json({
         success: false,
-        message: '文本不能为空'
+        message: 'Text is required.'
       });
     }
 

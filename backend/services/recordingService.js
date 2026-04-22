@@ -218,7 +218,7 @@ function setMacOutputDevice(device) {
 
 class RecordingService {
   constructor() {
-    this.activeRecordings = new Map(); // 存储活动录音的状态
+    this.activeRecordings = new Map(); // Store the state of active recordings
     // clientId -> { proc, restarts, intentionalStop, lastRestartAt, lastSentAt }
     this.monitorProcs = new Map();
     this.livePlaybackProc = null;
@@ -266,7 +266,7 @@ class RecordingService {
     });
   }
 
-  // 广播音量数据给所有客户端（使用 wsClientService 转发，并触发本地事件）
+  // Broadcast volume data to all clients (forward through wsClientService and trigger local events)
   broadcastVolume(volumeData) {
     try {
       wsClientService.broadcastVolume(volumeData);
@@ -464,7 +464,7 @@ class RecordingService {
     return { success: true, data: { stopped: true } };
   }
 
-  // 开始录音
+  // Start recording
   startRecording(clientId) {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const fileName = `recording-${timestamp}.flac`;
@@ -474,15 +474,15 @@ class RecordingService {
       fs.mkdirSync(recordingDir, { recursive: true });
     }
 
-    // 记录录音状态
+    // Record the recording state
     const recordingInfo = {
       fileName,
       filePath,
       startTime: new Date(),
       isRecording: true,
       chunks: [],
-      clientId: clientId, // 关联客户端ID
-      volumeData: [] // 存储音量数据
+      clientId: clientId, // Associated client ID
+      volumeData: [] // Stored volume data
     };
 
     this.activeRecordings.set(fileName, recordingInfo);
@@ -525,7 +525,7 @@ class RecordingService {
       ffmpegProc: null,
     };
 
-    // resolve ffmpeg executable and verify availability
+    // Resolve the ffmpeg executable and verify availability
     let ffmpegPath = resolveFfmpegPath();
     try {
       if (ffmpegPath && ffmpegPath.indexOf('/') !== -1) {
@@ -545,8 +545,8 @@ class RecordingService {
       throw new Error(`ffmpeg not available: ${err.message}`);
     }
 
-    // Prepare final spawn arguments.
-    // If caller provided ffmpegArgs, use them directly and append output file if needed.
+    // Prepare the final spawn arguments.
+    // If the caller provided ffmpegArgs, use them directly and append the output file if needed.
     // Otherwise, build platform-aware defaults from a device value.
     let spawnArgs;
     const platform = process.platform;
@@ -640,7 +640,7 @@ class RecordingService {
 
     const platform = process.platform;
     let baseArgs;
-    // On macOS validate avfoundation device immediately and return error if missing
+    // On macOS, validate the avfoundation device immediately and return an error if it is missing
     if (platform === 'darwin' && device) {
       try {
         const ffPath = resolveFfmpegPath();
@@ -695,13 +695,13 @@ class RecordingService {
 
     const spawnMonitor = () => {
       if (meta.intentionalStop) return;
-      // Validate macOS avfoundation device before spawning ffmpeg
+      // Validate the macOS avfoundation device before spawning ffmpeg
       if (platform === 'darwin' && device) {
         try {
           const ffPath = resolveFfmpegPath();
           if (!isAvfoundationDeviceAvailable(device, ffPath)) {
             logger.error(`ffmpeg monitor validation: avfoundation device not found for '${device}'`, 'spawnMonitor');
-            // Inform caller synchronously by setting an error marker and scheduling no spawn
+            // Inform the caller synchronously by setting an error marker and not spawning
             meta.lastError = `device-not-found:${device}`;
             return scheduleRestart();
           }
@@ -787,7 +787,7 @@ class RecordingService {
           this.monitorProcs.delete(clientId);
           return;
         }
-        // unexpected exit -> try restart with backoff
+        // Unexpected exit -> try restart with backoff
         meta.restarts = (meta.restarts || 0) + 1;
         if (meta.restarts > MAX_RESTARTS) {
           logger.error(`ffmpeg monitor for ${clientId} exceeded max restarts (${MAX_RESTARTS}), giving up`, 'ffmpegMonitorExit');
@@ -811,7 +811,7 @@ class RecordingService {
       }, backoff);
     };
 
-    // store meta immediately so stopVolumeMonitor can set intentionalStop
+    // Store meta immediately so stopVolumeMonitor can set intentionalStop
     this.monitorProcs.set(clientId, meta);
     spawnMonitor();
     return { success: true };
@@ -835,7 +835,7 @@ class RecordingService {
     return { success: true };
   }
 
-  // 停止录音
+  // Stop recording
   async stopRecording(fileName) {
     logger.info(`stopRecording requested: fileName=${fileName}`, 'stopRecording');
     const recordingInfo = this.activeRecordings.get(fileName);
@@ -857,7 +857,7 @@ class RecordingService {
         `stopRecording miss: fileName=${fileName} activeCount=${this.activeRecordings.size}`,
         'stopRecording'
       );
-      throw new Error(`录音 ${fileName} 不存在或未激活`);
+      throw new Error(`Recording ${fileName} does not exist or is not active.`);
     }
 
     const clientId = recordingInfo.clientId;
@@ -866,7 +866,7 @@ class RecordingService {
       this.stopVolumeMonitor(clientId);
     }
 
-    // If ffmpeg process is active for this recording, try graceful shutdown
+    // If an ffmpeg process is active for this recording, try a graceful shutdown
     if (recordingInfo.ffmpegProc) {
       // Try to ask ffmpeg to quit gracefully
       if (recordingInfo.ffmpegProc.stdin && !recordingInfo.ffmpegProc.stdin.destroyed) {
@@ -875,7 +875,7 @@ class RecordingService {
       await this.waitForProcessClose(recordingInfo.ffmpegProc, 5000);
     }
 
-    // If no ffmpeg process used and chunks were collected (legacy mode), write them
+    // If no ffmpeg process was used and chunks were collected (legacy mode), write them
     let size = 0;
     if (recordingInfo.chunks && recordingInfo.chunks.length) {
       const allChunks = Buffer.concat(recordingInfo.chunks);
@@ -891,18 +891,18 @@ class RecordingService {
       }
     }
 
-    // 从活动录音中移除
+    // Remove from active recordings
     this.activeRecordings.delete(fileName);
 
     return {
       fileName,
       filePath: recordingInfo.filePath,
-      duration: (new Date() - recordingInfo.startTime) / 1000, // 秒
+      duration: (new Date() - recordingInfo.startTime) / 1000, // seconds
       size
     };
   }
 
-  // 获取录音列表
+  // Get the recording list
   getList() {
     try {
       // include common audio/video container formats produced by ffmpeg
@@ -920,7 +920,7 @@ class RecordingService {
           createdAt: stats.birthtime,
           url: `/v1/recordings/${encodeURIComponent(file)}`,
         };
-      }).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)); // 按时间倒序排列
+      }).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)); // Sort by newest first
 
       return recordings;
     } catch (error) {
@@ -929,20 +929,20 @@ class RecordingService {
   }
 
 
-  // 删除录音文件
+  // Delete a recording file
   async deleteRecording(fileName) {
     const filePath = path.join(recordingDir, fileName);
 
-    // 验证文件名安全性
+    // Validate filename safety
     if (path.resolve(filePath).indexOf(recordingDir) !== 0) {
-      throw new Error('无效的文件路径');
+      throw new Error('Invalid file path.');
     }
 
     if (!fs.existsSync(filePath)) {
-      throw new Error('文件不存在');
+      throw new Error('File does not exist.');
     }
 
-    // 如果正在录音，则先停止
+    // If recording is in progress, stop it first
     if (this.activeRecordings.has(fileName)) {
       await this.stopRecording(fileName);
     }

@@ -1,12 +1,16 @@
+import { useLanguage } from '../../context/languageContext'
+
 function MusicHistoryPanel({ historyShows, onSwitchToHistoryShow, onDeleteHistoryShow }) {
+  const { t } = useLanguage()
+
   return (
     <div className="music-list-wrap history-wrap">
       <div className="music-list-header">
-        <div className="music-list-title">历史演出文件（双击加载并设为当前演出）</div>
+        <div className="music-list-title">{t('History shows (double-click to load and set as current show).', '历史演出文件（双击加载并设为当前演出）')}</div>
       </div>
       <ul className="history-show-list">
         {historyShows.length === 0 ? (
-          <li className="empty-text">暂无历史演出文件</li>
+          <li className="empty-text">{t('No history shows yet.', '暂无历史演出文件')}</li>
         ) : historyShows.map((item) => (
           <li
             key={item.fileName}
@@ -16,18 +20,18 @@ function MusicHistoryPanel({ historyShows, onSwitchToHistoryShow, onDeleteHistor
               type="button"
               className="history-show-main"
               onDoubleClick={() => onSwitchToHistoryShow(item.fileName)}
-              title="双击切换到该演出"
+              title={t('Double-click to switch to this show.', '双击切换到该演出')}
             >
               <span className="history-show-name">{item.recordName}</span>
-              <span className="history-show-meta">{item.count} 个节目</span>
+              <span className="history-show-meta">{t(`${item.count} tracks`, `${item.count} 个节目`)}</span>
             </button>
             <button
               type="button"
               className="history-show-delete"
               onClick={() => onDeleteHistoryShow(item.fileName)}
-              title={`删除历史演出 ${item.recordName}`}
+              title={t(`Delete history show ${item.recordName}`, `删除历史演出 ${item.recordName}`)}
             >
-              删除
+              {t('Delete', '删除')}
             </button>
           </li>
         ))}

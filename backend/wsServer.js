@@ -53,7 +53,7 @@ module.exports = function initWebSocket(server) {
       });
       console.log(`Note: if front-end is served over HTTPS use ${publicWsScheme === 'wss' ? 'wss://' : 'ws://'} and configure TLS/proxy accordingly.`);
     } catch (e) {
-      logger.info(`WebSocket 地址: ${publicWsScheme}://localhost:3000`, 'printEndpoints');
+      logger.info(`WebSocket URL: ${publicWsScheme}://localhost:3000`, 'printEndpoints');
     }
   }
 
@@ -63,7 +63,7 @@ module.exports = function initWebSocket(server) {
     server.on('listening', printEndpoints);
   }
 
-  // Helper to safely send JSON over a ws connection
+  // Helper to safely send JSON over a WS connection
   function safeSend(ws, obj) {
     try {
       ws.send(JSON.stringify(obj));
@@ -71,27 +71,27 @@ module.exports = function initWebSocket(server) {
   }
 
   wss.on('connection', (ws, req) => {
-    // log remote address and request path for debugging
+    // Log the remote address and request path for debugging
     try {
       const remote = req && req.socket ? req.socket.remoteAddress : 'unknown'
       const rpath = req && req.url ? req.url : '/'
       logger.info(`[WS] new connection from ${remote} path=${rpath}`, 'connection')
     } catch (e) {}
 
-    // 注册客户端并绑定消息处理（由 wsClientService 管理）
+    // Register the client and bind message handling (managed by wsClientService)
     const clientId = wsClientService.registerClient(ws);
-    // Determine client type from request path (strip leading '/') and store it
+    // Determine the client type from the request path (strip the leading '/') and store it
     try {
       const reqPath = req && req.url ? req.url : '/';
       const clientType = normalizeClientType(reqPath);
       wsClientService.setClientType(clientId, clientType);
     } catch (e) {}
-    // 发送客户端ID给前端
+    // Send the client ID to the frontend
     safeSend(ws, { type: 'clientId', data: clientId });
 
     // note: ws 'message' callback signature: (message, isBinary)
     ws.on('message', async (message, isBinary) => {
-      // 支持二进制和文本 — 增加日志以便诊断客户端发送但服务端未接收的问题
+      // Support binary and text payloads; add logs to diagnose cases where the client sends data but the server does not receive it
       try {
         logger.info(`raw message received, isBuffer=${Buffer.isBuffer(message)} len=${Buffer.isBuffer(message) ? message.length : (message && message.toString ? String(message).length : 'n/a')}`, 'message')
       } catch (e) {}
@@ -119,7 +119,7 @@ module.exports = function initWebSocket(server) {
         if (type === 'subscribe-volume') {
           const { fileName, device } = data || {};
           if (fileName) {
-            // 存储客户端订阅的录音文件
+            // Store the recording file subscribed to by the client
             const client = wsClientService.clients.get(clientId);
             if (client) {
               client.subscribedFile = fileName;

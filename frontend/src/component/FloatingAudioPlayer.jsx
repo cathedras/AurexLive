@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 
+import { useLanguage } from '../context/languageContext'
 import { FloatingAudioPlayerContext } from './FloatingAudioPlayerContext'
 
 function formatProgressTime(seconds) {
@@ -16,6 +17,8 @@ function formatProgressTime(seconds) {
 }
 
 function FloatingAudioPlayerPanel({ playerState, backendPlayback, localProgress, audioRef, onClose, onToggleCollapsed, onAudioPlay, onAudioPause, onAudioEnded, onAudioError, onAudioTimeUpdate, onAudioLoadedMetadata }) {
+  const { t } = useLanguage()
+
   if (!playerState.visible) {
     return null
   }
@@ -23,7 +26,7 @@ function FloatingAudioPlayerPanel({ playerState, backendPlayback, localProgress,
   const syncedSavedName = String(backendPlayback.currentTrack?.savedName || '').trim()
   const playerSavedName = String(playerState.savedName || '').trim()
   const isSyncedWithPlayback = Boolean(playerSavedName) && playerSavedName === syncedSavedName && backendPlayback.progress?.isAvailable
-  const progressSourceLabel = isSyncedWithPlayback ? '同步进度' : '预听进度'
+  const progressSourceLabel = isSyncedWithPlayback ? t('Synced progress', '同步进度') : t('Preview progress', '预听进度')
   const currentProgress = isSyncedWithPlayback
     ? backendPlayback.progress
     : localProgress
@@ -34,11 +37,11 @@ function FloatingAudioPlayerPanel({ playerState, backendPlayback, localProgress,
   const isBackendSyncOnly = Boolean(playerState.syncOnly) && String(backendPlayback.state || '').trim() === 'playing'
   const shouldShowBackendProgress = isBackendSyncOnly || isSyncedWithPlayback
   const displayTitle = isBackendSyncOnly
-    ? backendPlayback.currentTrack?.programName || playerState.programName || playerState.fileName || '未命名音频'
-    : playerState.programName || playerState.fileName || '未命名音频'
+    ? backendPlayback.currentTrack?.programName || playerState.programName || playerState.fileName || t('Untitled audio', '未命名音频')
+    : playerState.programName || playerState.fileName || t('Untitled audio', '未命名音频')
   const displaySubtitle = isBackendSyncOnly
-    ? backendPlayback.currentTrack?.performer || playerState.performer || '当前播放'
-    : playerState.performer || '当前预听'
+    ? backendPlayback.currentTrack?.performer || playerState.performer || t('Now playing', '当前播放')
+    : playerState.performer || t('Previewing', '当前预听')
 
   // Helper to check if file is a video based on extension
   const isVideoFile = (fileName) => {
@@ -64,8 +67,8 @@ function FloatingAudioPlayerPanel({ playerState, backendPlayback, localProgress,
           </div>
         </div>
         <div className="floating-audio-player-actions">
-          <button type="button" className="floating-audio-player-btn" onClick={onToggleCollapsed}>{playerState.collapsed ? '展开' : '折叠'}</button>
-          <button type="button" className="floating-audio-player-btn" onClick={onClose}>关闭</button>
+          <button type="button" className="floating-audio-player-btn" onClick={onToggleCollapsed}>{playerState.collapsed ? t('Expand', '展开') : t('Collapse', '折叠')}</button>
+          <button type="button" className="floating-audio-player-btn" onClick={onClose}>{t('Close', '关闭')}</button>
         </div>
       </div>
       {!playerState.collapsed && (
@@ -95,7 +98,7 @@ function FloatingAudioPlayerPanel({ playerState, backendPlayback, localProgress,
                 onTimeUpdate={onAudioTimeUpdate}
                 onLoadedMetadata={onAudioLoadedMetadata}
               >
-                您的浏览器不支持视频标签。
+                {t('Your browser does not support the video element.', '您的浏览器不支持视频标签。')}
               </video>
             ) : (
               <audio
@@ -119,6 +122,7 @@ function FloatingAudioPlayerPanel({ playerState, backendPlayback, localProgress,
 }
 
 export function FloatingAudioPlayerProvider({ children }) {
+  const { t } = useLanguage()
   const audioRef = useRef(null)
   const [playerState, setPlayerState] = useState({
     visible: false,
@@ -165,10 +169,10 @@ export function FloatingAudioPlayerProvider({ children }) {
     audioElement.play().catch(() => {
       setPlayerState((prev) => ({
         ...prev,
-        message: '已打开预听工具，请点击播放按钮继续。',
+        message: t('Preview player opened. Click play to continue.', '已打开预听工具，请点击播放按钮继续。'),
       }))
     })
-  }, [playerState.visible, playerState.syncOnly, playerState.url, playerState.playbackRequestId])
+  }, [playerState.visible, playerState.syncOnly, playerState.url, playerState.playbackRequestId, t])
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.EventSource === 'undefined') {
@@ -266,8 +270,8 @@ export function FloatingAudioPlayerProvider({ children }) {
         onToggleCollapsed={toggleCollapsed}
         onAudioPlay={() => setPlayerState((prev) => ({ ...prev, message: '' }))}
         onAudioPause={() => setPlayerState((prev) => ({ ...prev, message: prev.message }))}
-        onAudioEnded={() => setPlayerState((prev) => ({ ...prev, message: '预听结束。' }))}
-        onAudioError={() => setPlayerState((prev) => ({ ...prev, message: '当前音频无法播放，请稍后重试。' }))}
+        onAudioEnded={() => setPlayerState((prev) => ({ ...prev, message: t('Preview finished.', '预听结束。') }))}
+        onAudioError={() => setPlayerState((prev) => ({ ...prev, message: t('This audio cannot be played right now. Please try again later.', '当前音频无法播放，请稍后重试。') }))}
         onAudioTimeUpdate={(event) => {
           const audioElement = event.currentTarget
           const durationSec = Number.isFinite(audioElement.duration) ? audioElement.duration : null

@@ -87,7 +87,7 @@ router.get('/links', async (req, res) => {
       }
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: `生成二维码失败：${error.message}` });
+    return res.status(500).json({ success: false, message: `Failed to generate QR codes: ${error.message}` });
   }
 });
 

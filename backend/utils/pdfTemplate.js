@@ -54,7 +54,7 @@ function renderProgramSheetPdf(doc, list, recordName) {
     doc
       .fontSize(11)
       .fillColor('#666666')
-      .text(`导出时间：${new Date().toLocaleString('zh-CN')}  ·  节目总数：${list.length}`, marginLeft, startY + 30, {
+      .text(`Export time: ${new Date().toLocaleString('en-US')}  ·  Total programs: ${list.length}`, marginLeft, startY + 30, {
         width: contentWidth,
         align: 'left'
       });
@@ -64,13 +64,13 @@ function renderProgramSheetPdf(doc, list, recordName) {
     doc.fontSize(12).fillColor('#222222');
 
     let x = marginLeft;
-    doc.text('序号', x + 4, startY + 6, { width: colWidths.order - 8 });
+    doc.text('No.', x + 4, startY + 6, { width: colWidths.order - 8 });
     x += colWidths.order;
-    doc.text('演出人', x + 4, startY + 6, { width: colWidths.performer - 8 });
+    doc.text('Performer', x + 4, startY + 6, { width: colWidths.performer - 8 });
     x += colWidths.performer;
-    doc.text('节目名', x + 4, startY + 6, { width: colWidths.programName - 8 });
+    doc.text('Program', x + 4, startY + 6, { width: colWidths.programName - 8 });
     x += colWidths.programName;
-    doc.text('主持人口播词', x + 4, startY + 6, { width: colWidths.hostScript - 8 });
+    doc.text('Host script', x + 4, startY + 6, { width: colWidths.hostScript - 8 });
 
     drawLine(startY + 26);
     return startY + 28;

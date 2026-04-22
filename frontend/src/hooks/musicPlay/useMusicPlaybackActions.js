@@ -1,5 +1,6 @@
 import { useCallback } from 'react'
 import { getTrackPlaybackState } from '../../services/musicPlay'
+import { useLanguage } from '../../context/languageContext'
 
 export function useMusicPlaybackActions({
   tracks,
@@ -16,6 +17,8 @@ export function useMusicPlaybackActions({
   refreshPageData,
   reportClientError,
 }) {
+  const { t } = useLanguage()
+
   const fetchBackendPlaybackState = useCallback(async () => {
     try {
       const result = await musicPageApi.fetchBackendPlaybackState()
@@ -39,16 +42,16 @@ export function useMusicPlaybackActions({
     try {
       const result = await musicPageApi.switchToHistoryShow(fileName, true)
       if (!result.success) {
-        throw new Error(result.message || '切换失败')
+        throw new Error(result.message || t('Switch failed', '切换失败'))
       }
 
       setCurrentTrackId(null)
       await refreshPageData()
-      setCurrentProgramName('暂无节目')
-      setCurrentPerformerName('暂无演出人员')
-      setMessage(`已切换当前演出：${result.currentShow?.recordName || fileName}`)
+      setCurrentProgramName(t('No track yet', '暂无节目'))
+      setCurrentPerformerName(t('No performer yet', '暂无演出人员'))
+      setMessage(t(`Switched to current show: ${result.currentShow?.recordName || fileName}`, `已切换当前演出：${result.currentShow?.recordName || fileName}`))
     } catch (error) {
-      setMessage(`切换演出失败：${error.message}`)
+      setMessage(t(`Failed to switch show: ${error.message}`, `切换演出失败：${error.message}`))
     }
   }, [musicPageApi, refreshPageData, setCurrentPerformerName, setCurrentProgramName, setCurrentTrackId, setMessage])
 
@@ -56,19 +59,19 @@ export function useMusicPlaybackActions({
     try {
       const result = await musicPageApi.deleteHistoryShow(fileName)
       if (!result.success) {
-        throw new Error(result.message || '删除失败')
+        throw new Error(result.message || t('Delete failed', '删除失败'))
       }
 
       if (result.clearedCurrentShow) {
         setCurrentTrackId(null)
-        setCurrentProgramName('暂无节目')
-        setCurrentPerformerName('暂无演出人员')
+        setCurrentProgramName(t('No track yet', '暂无节目'))
+        setCurrentPerformerName(t('No performer yet', '暂无演出人员'))
       }
 
       await refreshPageData()
-      setMessage(result.message || '历史演出删除成功')
+      setMessage(result.message || t('History show deleted successfully', '历史演出删除成功'))
     } catch (error) {
-      setMessage(`删除历史演出失败：${error.message}`)
+      setMessage(t(`Failed to delete history show: ${error.message}`, `删除历史演出失败：${error.message}`))
     }
   }, [musicPageApi, refreshPageData, setCurrentPerformerName, setCurrentProgramName, setCurrentTrackId, setMessage])
 
@@ -83,7 +86,7 @@ export function useMusicPlaybackActions({
   const playProgramEffect = useCallback(async (effectName) => {
     const ctx = getAudioContext()
     if (!ctx) {
-      setMessage('当前浏览器不支持音效播放。')
+      setMessage(t('This browser does not support sound effects.', '当前浏览器不支持音效播放。'))
       return
     }
 
@@ -121,7 +124,7 @@ export function useMusicPlaybackActions({
     const savedFileName = String(selectedTrack?.savedName || '').trim()
     const sourceFileName = String(selectedTrack?.fileName || savedFileName || '').trim()
     if (!savedFileName) {
-      setMessage('该节目暂无可播放音频，请先上传或绑定音频文件。')
+      setMessage(t('This track has no playable audio. Upload or bind an audio file first.', '该节目暂无可播放音频，请先上传或绑定音频文件。'))
       return
     }
 
@@ -132,10 +135,10 @@ export function useMusicPlaybackActions({
           programName: selectedTrack.programName,
         })
 
-        setCurrentProgramName(selectedTrack.programName || '暂无节目')
-        setCurrentPerformerName(selectedTrack.performer || '暂无演出人员')
+        setCurrentProgramName(selectedTrack.programName || t('No track yet', '暂无节目'))
+        setCurrentPerformerName(selectedTrack.performer || t('No performer yet', '暂无演出人员'))
       } catch {
-        setMessage('更新当前节目状态失败，但不影响本次播放。')
+        setMessage(t('Failed to update the current track state, but playback can continue.', '更新当前节目状态失败，但不影响本次播放。'))
       }
 
       setCurrentTrackId(trackId)
@@ -151,7 +154,7 @@ export function useMusicPlaybackActions({
       }
 
       setBackendPlayback(backendResult.state)
-      setMessage('已开始播放。关闭当前页面后，只要服务仍在运行，音乐会继续播放。')
+      setMessage(t('Playback started. Even after closing this page, music will continue as long as the service is running.', '已开始播放。关闭当前页面后，只要服务仍在运行，音乐会继续播放。'))
     } catch (error) {
       const errorName = error?.name || 'UnknownError'
       const errorMessage = error?.message || '未知错误'
@@ -177,7 +180,7 @@ export function useMusicPlaybackActions({
       })
 
       if (errorName === 'AbortError') return
-      setMessage(`播放失败：${errorName} - ${errorMessage}`)
+      setMessage(t(`Playback failed: ${errorName} - ${errorMessage}`, `播放失败：${errorName} - ${errorMessage}`))
     }
   }, [musicPageApi, reportClientError, setBackendPlayback, setCurrentPerformerName, setCurrentProgramName, setCurrentTrackId, setMessage, tracks])
 
@@ -192,8 +195,8 @@ export function useMusicPlaybackActions({
 
       if (action === 'stop') {
         setCurrentTrackId(null)
-        setCurrentProgramName('暂无节目')
-        setCurrentPerformerName('暂无演出人员')
+        setCurrentProgramName(t('No track yet', '暂无节目'))
+        setCurrentPerformerName(t('No performer yet', '暂无演出人员'))
 
         try {
           await musicPageApi.updateCurrentProgram({ clearCurrentProgram: true })
@@ -202,11 +205,15 @@ export function useMusicPlaybackActions({
         }
       }
 
-      const label = action === 'pause' ? '播放已暂停' : action === 'resume' ? '播放已恢复' : '播放已停止'
+      const label = action === 'pause'
+        ? t('Playback paused', '播放已暂停')
+        : action === 'resume'
+          ? t('Playback resumed', '播放已恢复')
+          : t('Playback stopped', '播放已停止')
       setMessage(label)
       return result.state
     } catch (error) {
-      setMessage(`播放控制失败：${error.message}`)
+      setMessage(t(`Playback control failed: ${error.message}`, `播放控制失败：${error.message}`))
       return null
     }
   }, [musicPageApi, setBackendPlayback, setCurrentPerformerName, setCurrentProgramName, setCurrentTrackId, setMessage])
@@ -221,7 +228,7 @@ export function useMusicPlaybackActions({
       setBackendPlayback(result.state)
       return result.state
     } catch (error) {
-      setMessage(`设置音量失败：${error.message}`)
+      setMessage(t(`Failed to set volume: ${error.message}`, `设置音量失败：${error.message}`))
       return null
     }
   }, [musicPageApi, setBackendPlayback, setMessage])
@@ -252,7 +259,7 @@ export function useMusicPlaybackActions({
   const openPreviewPlayer = useCallback(async (track) => {
     const savedFileName = String(track?.savedName || '').trim()
     if (!savedFileName) {
-      setMessage('该节目暂无可预听音频。')
+      setMessage(t('This track has no preview audio yet.', '该节目暂无可预听音频。'))
       return
     }
 
@@ -267,15 +274,15 @@ export function useMusicPlaybackActions({
           fileName: latestBackendState?.currentTrack?.fileName || track.fileName,
           savedName: latestBackendState?.currentTrack?.savedName || savedFileName,
           syncOnly: true,
-          message: currentProgram ? `当前正在播放《${currentProgram}》，此处显示同步进度。` : '当前正在播放中，此处显示同步进度。',
+          message: currentProgram ? t(`Now playing "${currentProgram}", showing synced progress here.`, `当前正在播放《${currentProgram}》，此处显示同步进度。`) : t('Music is playing right now; showing synced progress here.', '当前正在播放中，此处显示同步进度。'),
         })
-        setMessage(currentProgram ? `当前正在播放《${currentProgram}》，悬浮窗已切换为进度同步。` : '当前正在播放中，悬浮窗已切换为进度同步。')
+        setMessage(currentProgram ? t(`Now playing "${currentProgram}"; the floating player is synced to progress.`, `当前正在播放《${currentProgram}》，悬浮窗已切换为进度同步。`) : t('Music is playing right now; the floating player is synced to progress.', '当前正在播放中，悬浮窗已切换为进度同步。'))
         return
       }
 
       const result = await musicPageApi.fetchPreviewSource(savedFileName)
       if (!result.success || !result.url) {
-        throw new Error(result.message || '获取预听音频失败')
+        throw new Error(result.message || t('Failed to fetch preview audio.', '获取预听音频失败'))
       }
 
       openFloatingPlayer({
@@ -285,9 +292,9 @@ export function useMusicPlaybackActions({
         fileName: result.fileName || track.fileName,
         savedName: result.savedName || savedFileName,
       })
-      setMessage('已打开预听工具。')
+      setMessage(t('Preview player opened.', '已打开预听工具。'))
     } catch (error) {
-      setMessage(`打开预听失败：${error.message}`)
+      setMessage(t(`Failed to open preview player: ${error.message}`, `打开预听失败：${error.message}`))
     }
   }, [backendPlayback, fetchBackendPlaybackState, musicPageApi, openFloatingPlayer, setMessage])
 

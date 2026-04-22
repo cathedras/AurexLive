@@ -267,7 +267,7 @@ class MusicPlaybackService {
     });
 
     this.player.mpvPlayer?.on('error', (error) => {
-      this.errorMessage = error?.message || 'mpv 初始化失败';
+      this.errorMessage = error?.message || 'mpv initialization failed';
       this.syncRuntimeState();
     });
   }
@@ -372,7 +372,7 @@ class MusicPlaybackService {
       return;
     }
 
-    throw new Error('当前后端未检测到可用的 mpv 播放器，请先安装 mpv 或设置 MPV_PATH。');
+    throw new Error('No available mpv player was detected on the backend. Please install mpv or set MPV_PATH.');
   }
 
   async refreshPlaybackMetrics() {
@@ -437,7 +437,7 @@ class MusicPlaybackService {
 
     const normalizedFilePath = path.resolve(String(filePath || '').trim());
     if (!normalizedFilePath || !fs.existsSync(normalizedFilePath)) {
-      throw new Error('待播放的音频文件不存在');
+      throw new Error('The audio file to be played does not exist.');
     }
 
     const durationSec = parseDurationSeconds(normalizedFilePath);
@@ -479,7 +479,7 @@ class MusicPlaybackService {
       this.pendingTrack = null;
       this.state = 'idle';
       this.currentTrack = null;
-      this.errorMessage = error.message || 'mpv 播放失败';
+      this.errorMessage = error.message || 'mpv playback failed';
       this.resetProgressState();
       this.stopProgressSync();
       this.syncRuntimeState();
@@ -491,7 +491,7 @@ class MusicPlaybackService {
     this.ensureAvailable();
 
     if (!this.player || this.state !== 'playing') {
-      throw new Error('当前没有正在播放的后端音频');
+      throw new Error('There is no backend audio currently playing.');
     }
 
     this.player.pause();
@@ -507,7 +507,7 @@ class MusicPlaybackService {
     this.ensureAvailable();
 
     if (!this.player || this.state !== 'paused') {
-      throw new Error('当前没有可恢复的后端音频');
+      throw new Error('There is no backend audio to resume.');
     }
 
     this.player.resume();
@@ -559,7 +559,7 @@ class MusicPlaybackService {
     this.restoreSnapshot = null;
 
     if (!this.driver.available) {
-      this.errorMessage = '未检测到可用的 mpv 播放器，跳过后端播放恢复。';
+      this.errorMessage = 'No available mpv player was detected; skipping backend playback restore.';
       this.syncRuntimeState();
       return this.getPublicState();
     }
@@ -573,7 +573,7 @@ class MusicPlaybackService {
     if (!resolvedFilePath) {
       this.state = 'idle';
       this.currentTrack = null;
-      this.errorMessage = '上次播放的音频文件不存在，无法自动恢复。';
+      this.errorMessage = 'The previously played audio file does not exist, so playback cannot be restored automatically.';
       this.syncRuntimeState();
       return this.getPublicState();
     }

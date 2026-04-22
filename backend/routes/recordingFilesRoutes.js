@@ -33,16 +33,16 @@ router.get('/:filename', (req, res) => {
   try {
     const filename = String(req.params.filename || '').trim();
     if (!filename) {
-      return res.status(400).json({ success: false, message: '文件名不能为空' });
+      return res.status(400).json({ success: false, message: 'Filename is required.' });
     }
 
     const filePath = path.join(recordingDir, filename);
     if (path.resolve(filePath).indexOf(recordingDir) !== 0) {
-      return res.status(400).json({ success: false, message: '无效的文件路径' });
+      return res.status(400).json({ success: false, message: 'Invalid file path.' });
     }
 
     if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ success: false, message: '文件不存在' });
+      return res.status(404).json({ success: false, message: 'File not found.' });
     }
 
     const stat = fs.statSync(filePath);
@@ -59,7 +59,7 @@ router.get('/:filename', (req, res) => {
       res.setHeader('Content-Length', stat.size);
       return pipeline(fs.createReadStream(filePath), res, (error) => {
         if (error && !res.headersSent) {
-          res.status(500).json({ success: false, message: '读取录音文件失败', error: error.message });
+          res.status(500).json({ success: false, message: 'Failed to read recording file', error: error.message });
         }
       });
     }
@@ -71,11 +71,11 @@ router.get('/:filename', (req, res) => {
 
     return pipeline(fs.createReadStream(filePath, { start, end }), res, (error) => {
       if (error && !res.headersSent) {
-        res.status(500).json({ success: false, message: '读取录音文件失败', error: error.message });
+        res.status(500).json({ success: false, message: 'Failed to read recording file', error: error.message });
       }
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: '读取录音文件失败', error: error.message });
+    return res.status(500).json({ success: false, message: 'Failed to read recording file', error: error.message });
   }
 });
 

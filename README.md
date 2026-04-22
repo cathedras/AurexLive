@@ -1,128 +1,128 @@
-# 演出中台
+# AurexLive
 
-一个基于 Express + React(Vite) 的演出管理与播控小系统，覆盖文件上传、节目单维护、当前演出展示、录音控制、WebSocket 实时通信与 PDF 导出。
+AurexLive is a premium live production control platform built with Express and React (Vite). It brings together file uploads, setlist management, current show display, recording control, WebSocket-based real-time communication, and PDF export in one unified workflow for stage production and live operations.
 
-## 项目能力
+## Capabilities
 
-- 文件上传与文件列表查看
-- 音乐节目单管理
-  - 新增、编辑、删除节目
-  - 拖拽排序
-  - 当前节目与当前演出联动显示
-  - 节目单 PDF 导出
-- 播控与实时状态
-  - 当前演出状态保存与切换
-  - 首页展示当前节目、当前演出与直播入口
-  - 实时播控状态、效果触发、后端播放控制
-- 录音与设备管理
-  - 录音输入设备枚举
-  - 录音输出设备枚举
-  - 切换默认输出设备
-  - 后端录音启动/停止
-  - 录音列表与录音文件访问
-- AI 辅助
-  - 主持人口播词候选生成
-  - 文本润色/修正接口
-- 直播与移动端
-  - 直播预览页
-  - 直播推流页
-  - 手机摄像头与手机控制页
-  - WebRTC 相关接口
-- 运维与诊断
-  - 前端错误上报
-  - Swagger 接口文档
-  - PM2 进程管理
+- File uploads and file list browsing
+- Music setlist management
+  - Add, edit, and delete items
+  - Drag-and-drop reordering
+  - Linked display of the current set and current show
+  - Setlist PDF export
+- Show control and real-time state
+  - Save and switch the current show state
+  - Display the current set, current show, and live entry on the home page
+  - Real-time show state, effect triggering, and backend playback control
+- Recording and device management
+  - Enumerate recording input devices
+  - Enumerate recording output devices
+  - Switch the default output device
+  - Start and stop backend recording
+  - Browse recordings and recording files
+- AI assistance
+  - Generate candidate host script lines
+  - Text polishing and correction endpoints
+- Live streaming and mobile
+  - Live preview page
+  - Live streaming page
+  - Mobile camera and mobile control page
+  - WebRTC-related endpoints
+- Operations and diagnostics
+  - Frontend error reporting
+  - Swagger API documentation
+  - PM2 process management
 
-## 功能规划
+## Roadmap
 
-- 多媒体在线直播平台推送
-- 微信文件上传读取
-- 优化音视频播放码率（预听、存储、在线）
-- AI 接口调用
-- 专业音频调音工具（未来规划）
+- Push to online multi-media live streaming platforms
+- Read files uploaded through WeChat
+- Optimize audio and video playback bitrates for preview, storage, and online playback
+- AI API integration
+- Professional audio tuning tools (future plan)
 
-## 技术栈
+## Tech Stack
 
-- 后端：Node.js、Express、WebSocket、ffmpeg、pdfkit、multer、swagger-ui-express
-- 前端：React 19、Vite、React Router、Axios、mediasoup-client
-- 运行目录：`uploads/`、`recordings/`、`runtime/`、`show_record/`
+- Backend technologies: Node.js, Express, WebSocket, ffmpeg, pdfkit, multer, swagger-ui-express
+- Frontend technologies: React 19, Vite, React Router, Axios, mediasoup-client
+- Runtime directories: `uploads/`, `recordings/`, `runtime/`, `show_record/`
 
-## 目录结构
+## Project Structure
 
 ```text
-backend/      # Express 后端、路由、服务、中间件、OpenAPI
-frontend/     # React + Vite 前端
-runtime/      # 运行时 JSON 配置
-recordings/   # 录音文件
-show_record/  # 历史演出记录 JSON
-uploads/      # 上传文件目录
-certs/        # 本地 HTTPS 证书
+backend/      # Express backend, routes, services, middleware, OpenAPI
+frontend/     # React + Vite frontend
+runtime/      # Runtime JSON configuration
+recordings/   # Recording files
+show_record/  # Historical show record JSON files
+uploads/      # Uploaded files directory
+certs/        # Local HTTPS certificates
 ```
 
-## 页面路由
+## Routes
 
-前端页面通过 `/page` 开头的路由访问：
+Frontend pages are accessed through routes that start with `/page`:
 
-- `/page` 首页
-- `/page/upload` 文件上传页
-- `/page/music` 节目单与播控页
-- `/page/recording` 录音页
-- `/page/live-stream` 直播推流页
-- `/page/live-preview` 直播预览页
-- `/page/settings` 设置页
-- `/page/ws-demo` WebSocket 演示页
+- `/page` Home
+- `/page/upload` File upload
+- `/page/music` Setlist and show control
+- `/page/recording` Recording
+- `/page/live-stream` Live streaming
+- `/page/live-preview` Live preview
+- `/page/settings` Settings
+- `/page/ws-demo` WebSocket demo
 
-## 安装依赖
+## Install Dependencies
 
-在项目根目录执行：
+Run the following in the project root:
 
 ```bash
 npm install
 npm --prefix frontend install
 ```
 
-## 本地开发
+## Local Development
 
-一键启动后端、前端和监控进程：
+Start the backend, frontend, and monitoring process with one command:
 
 ```bash
 npm run dev
 ```
 
-该命令等价于同时运行：
+This is equivalent to running the following at the same time:
 
-- `npm run server:dev`：后端热重载
-- `node backend/monitorWorker.js`：监控进程
-- `npm run client`：前端 Vite 开发服务
+- `npm run server:dev`: backend hot reload
+- `node backend/monitorWorker.js`: monitoring process
+- `npm run client`: frontend Vite development server
 
-默认访问地址：
+Default URLs:
 
-- 后端：`http://localhost:3000`
-- 前端开发服务：通常是 `http://localhost:5173`
-- 接口文档：`http://localhost:3000/docs`
+- Backend: `http://localhost:3000`
+- Frontend development server: usually `http://localhost:5173`
+- API docs: `http://localhost:3000/docs`
 
-## 常用脚本
+## Common Scripts
 
 ```bash
-npm run server        # 只启动后端
-npm run server:dev    # 后端开发模式（watch）
-npm run client        # 只启动前端 Vite
-npm run build         # 构建前端生产包
-npm test              # 运行后端测试
-npm run pm2:start     # 使用 ecosystem.config.js 启动 PM2
-npm run pm2:stop      # 停止 PM2
-npm run pm2:restart   # 重启 PM2
-npm run pm2:logs      # 查看 PM2 日志
+npm run server        # Start backend only
+npm run server:dev    # Backend development mode (watch)
+npm run client        # Start frontend Vite only
+npm run build         # Build the frontend production bundle
+npm test              # Run backend tests
+npm run pm2:start     # Start PM2 using ecosystem.config.js
+npm run pm2:stop      # Stop PM2
+npm run pm2:restart   # Restart PM2
+npm run pm2:logs      # View PM2 logs
 ```
 
-## 接口预览
+## API Preview
 
-项目已接入 Swagger UI：
+Swagger UI is integrated into the project:
 
-- 文档页：`http://localhost:3000/docs`
-- OpenAPI JSON：`http://localhost:3000/docs/openapi.json`
+- Docs page: `http://localhost:3000/docs`
+- OpenAPI JSON: `http://localhost:3000/docs/openapi.json`
 
-文档覆盖的核心接口前缀包括：
+The main documented API prefixes include:
 
 - `/v1/upload`
 - `/v1/files`
@@ -137,55 +137,55 @@ npm run pm2:logs      # 查看 PM2 日志
 - `/v1/client-error`
 - `/v1/webrtc`
 
-其中录音相关接口包含输入/输出设备枚举、输出设备切换、录音启动/停止、录音列表和录音转换；AI 接口包含主持人口播词候选生成与文本修正。
+The recording-related APIs cover input and output device enumeration, output device switching, recording start and stop, recording lists, and recording conversion. The AI APIs cover candidate host script generation and text correction.
 
-## 环境变量
+## Environment Variables
 
-### 后端
+### Backend
 
-后端启动时会优先加载根目录下的环境文件：
+On startup, the backend loads the environment file from the project root in this order:
 
-- 开发环境：`.env.dev`
-- 生产环境：`.env.prd`
-- 也可以通过 `ENV_FILE` 指定自定义文件名
+- Development: `.env.dev`
+- Production: `.env.prd`
+- You can also specify a custom file name with `ENV_FILE`
 
-常用变量：
+Common backend variables:
 
-- `PORT`：后端端口，默认 `3000`
-- `NODE_ENV`：运行环境
-- `USE_HTTPS`：强制启用 HTTPS / WSS
-- `SSL_KEY_PATH`：HTTPS 私钥路径
-- `SSL_CERT_PATH`：HTTPS 证书路径
-- `SWAGGER_AUTO_EXPOSE`：控制是否自动暴露 Swagger 文档
-- `FRONTEND_DEV_SERVER_URL`：开发环境前端地址
-- `USE_VITE_DEV_SERVER`：是否在开发环境跳转到 Vite 开发服务器
-- `AI_API_KEY` 或 `OPENAI_API_KEY`
-- `AI_API_BASE_URL` 或 `OPENAI_BASE_URL`
-- `AI_API_MODEL` 或 `OPENAI_MODEL`
+- `PORT`: backend port, default `3000`
+- `NODE_ENV`: runtime environment
+- `USE_HTTPS`: force HTTPS / WSS
+- `SSL_KEY_PATH`: HTTPS private key path
+- `SSL_CERT_PATH`: HTTPS certificate path
+- `SWAGGER_AUTO_EXPOSE`: control whether Swagger docs are exposed automatically
+- `FRONTEND_DEV_SERVER_URL`: frontend address in development
+- `USE_VITE_DEV_SERVER`: whether to redirect to the Vite development server in development
+- `AI_API_KEY` or `OPENAI_API_KEY`
+- `AI_API_BASE_URL` or `OPENAI_BASE_URL`
+- `AI_API_MODEL` or `OPENAI_MODEL`
 
-### 前端
+### Frontend
 
-- `VITE_API_BASE_URL`：API 基础地址，默认可按项目约定使用 `/v1`
-- `VITE_API_PORT`：WebSocket 地址推导使用的后端端口，默认 `3000`
+- `VITE_API_BASE_URL`: API base URL, default can follow the project convention `/v1`
+- `VITE_API_PORT`: backend port used for WebSocket URL derivation, default `3000`
 
-前端的 WebSocket 连接会在 HTTPS 场景下自动使用 `wss`。
+Frontend WebSocket connections automatically switch to `wss` in HTTPS environments.
 
-## 数据文件
+## Data Files
 
-- `runtime/musiclist.json`：当前节目单
-- `runtime/current_show.json`：当前演出状态
-- `runtime/user_settings.json`：用户设置
-- `runtime/live_state.json`：实时播控状态
-- `recordings/`：录音输出文件
-- `show_record/*.json`：历史演出记录
+- `runtime/musiclist.json`: current setlist
+- `runtime/current_show.json`: current show state
+- `runtime/user_settings.json`: user settings
+- `runtime/live_state.json`: real-time show control state
+- `recordings/`: recording output files
+- `show_record/*.json`: historical show records
 
-## 录音与系统音频
+## Recording and System Audio
 
-录音与系统输出切换的实现主要在 [backend/routes/recordingRoutes.js](backend/routes/recordingRoutes.js) 和 [backend/services/recordingService.js](backend/services/recordingService.js)。当前项目支持录音输入设备枚举、输出设备枚举、切换默认输出设备，以及基于 ffmpeg 的录音与转码。
+The recording and output-switching workflow is implemented primarily in [backend/routes/recordingRoutes.js](backend/routes/recordingRoutes.js) and [backend/services/recordingService.js](backend/services/recordingService.js). The project currently supports recording input device enumeration, output device enumeration, default output device switching, and ffmpeg-based recording and transcoding.
 
-在 macOS 上，如果你要录系统声音，通常需要配合 BlackHole 2ch 或 Loopback 这类虚拟声卡使用；同时如果要在录制时保持外放，可以使用系统的多输出设备进行组合。
+On macOS, recording system audio usually requires a virtual audio device such as BlackHole 2ch or Loopback. If you also want to keep audio playing through speakers during recording, combine the speaker output and the virtual device with a Multi-Output Device in Audio MIDI Setup.
 
-## 部署建议
+## Deployment Notes
 
 ### PM2
 
@@ -196,7 +196,7 @@ npm run build
 npm run pm2:start
 ```
 
-### Nginx 反向代理
+### Nginx Reverse Proxy
 
 ```nginx
 server {
@@ -216,11 +216,11 @@ server {
 }
 ```
 
-如果需要 HTTPS，请同时配置 `USE_HTTPS=1` 和对应证书路径，或者通过 Nginx 在外层终止 TLS。
+If you need HTTPS, configure `USE_HTTPS=1` and the corresponding certificate paths, or terminate TLS at the Nginx layer.
 
-## 说明
+## Notes
 
-- 首页和节目单页面会读取当前演出与当前节目状态。
-- PDF 导出由后端生成。
-- 代码中已预留移动端控制、直播与 WebRTC 相关页面和接口。
+- The home page and setlist page read the current show and current set state.
+- PDF export is generated by the backend.
+- The codebase already includes reserved pages and APIs for mobile control, live streaming, and WebRTC.
 

@@ -62,8 +62,8 @@ function resolveTrackFileHash(track = {}) {
  * Normalize track object with default values
  */
 function normalizeTrack(track, index = 0) {
-  const performer = String(track?.performer || '').trim() || '未知演出人';
-  const programName = String(track?.programName || '').trim() || '未命名节目';
+  const performer = String(track?.performer || '').trim() || 'Unknown performer';
+  const programName = String(track?.programName || '').trim() || 'Untitled program';
   const fileName = String(track?.fileName || track?.displayName || '').trim();
   const id = String(track?.id || track?.savedName || `custom-${Date.now()}-${index}`);
   const savedName = String(track?.savedName || '').trim();
@@ -387,7 +387,7 @@ function buildRuntimeMusicListOutput(savedList = {}) {
  * Build saved track input for new tracks without audio
  */
 function buildSavedTrackInput(track = {}, index = 0) {
-  const fileName = String(track?.fileName || track?.displayName || '').trim() || '手动新增节目（无音频）';
+  const fileName = String(track?.fileName || track?.displayName || '').trim() || 'Manually added program (no audio)';
   const savedName = String(track?.savedName || '').trim();
 
   return normalizeTrack({
@@ -431,7 +431,7 @@ function updateCurrentProgramState({ performer, programName, clearCurrentProgram
   const safePerformer = String(performer || '').trim();
   const safeProgramName = String(programName || '').trim();
   if (!shouldClearCurrentProgram && !safeProgramName) {
-    throw new Error('节目名不能为空');
+    throw new Error('Program name is required.');
   }
 
   const currentState = readCurrentShowState();
@@ -554,7 +554,7 @@ function toMusicListResponsePayload(output = {}) {
 function syncShowToMusicList(fileName) {
   const sourcePath = getShowFilePath(fileName);
   if (!fs.existsSync(sourcePath)) {
-    throw new Error('目标演出文件不存在');
+    throw new Error('The target show file does not exist.');
   }
 
   const rawText = fs.readFileSync(sourcePath, 'utf-8');
@@ -650,7 +650,7 @@ function getCurrentProgram() {
   }
 
   return {
-    performer: currentState.currentPerformerName || '未知演出人',
+    performer: currentState.currentPerformerName || 'Unknown performer',
     programName: currentState.currentProgramName
   };
 }
@@ -702,7 +702,7 @@ function renderProgramSheetPdf(doc, list, recordName) {
     doc
       .fontSize(11)
       .fillColor('#666666')
-      .text(`导出时间：${new Date().toLocaleString('zh-CN')}  ·  节目总数：${list.length}`, marginLeft, startY + 30, {
+      .text(`Export time: ${new Date().toLocaleString('en-US')}  ·  Total programs: ${list.length}`, marginLeft, startY + 30, {
         width: contentWidth,
         align: 'left'
       });
@@ -712,13 +712,13 @@ function renderProgramSheetPdf(doc, list, recordName) {
     doc.fontSize(12).fillColor('#222222');
 
     let x = marginLeft;
-    doc.text('序号', x + 4, startY + 6, { width: colWidths.order - 8 });
+    doc.text('No.', x + 4, startY + 6, { width: colWidths.order - 8 });
     x += colWidths.order;
-    doc.text('演出人', x + 4, startY + 6, { width: colWidths.performer - 8 });
+    doc.text('Performer', x + 4, startY + 6, { width: colWidths.performer - 8 });
     x += colWidths.performer;
-    doc.text('节目名', x + 4, startY + 6, { width: colWidths.programName - 8 });
+    doc.text('Program', x + 4, startY + 6, { width: colWidths.programName - 8 });
     x += colWidths.programName;
-    doc.text('主持人口播词', x + 4, startY + 6, { width: colWidths.hostScript - 8 });
+    doc.text('Host script', x + 4, startY + 6, { width: colWidths.hostScript - 8 });
 
     drawLine(startY + 26);
     return startY + 28;

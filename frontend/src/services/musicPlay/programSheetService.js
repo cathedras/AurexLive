@@ -1,3 +1,5 @@
+import { getPreferredLanguage, localizeText } from '../../utils/language'
+
 function escapeHtml(input) {
   return String(input || '')
     .replaceAll('&', '&amp;')
@@ -8,7 +10,8 @@ function escapeHtml(input) {
 }
 
 export function createProgramSheetHtml(tracks, title = '节目单') {
-  const now = new Date().toLocaleString('zh-CN')
+  const language = getPreferredLanguage()
+  const now = new Date().toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US')
   const rows = tracks
     .map(
       (track, index) => `
@@ -39,18 +42,18 @@ export function createProgramSheetHtml(tracks, title = '节目单') {
 </head>
 <body>
   <h1>${title}</h1>
-  <div class="meta">导出时间：${now} · 节目总数：${tracks.length}</div>
+  <div class="meta">${localizeText(language, `Exported at: ${now} · Total tracks: ${tracks.length}`, `导出时间：${now} · 节目总数：${tracks.length}`)}</div>
   <table>
     <thead>
       <tr>
-        <th>序号</th>
-        <th>演出人</th>
-        <th>节目名</th>
-        <th>主持人口播词</th>
+        <th>${localizeText(language, 'No.', '序号')}</th>
+        <th>${localizeText(language, 'Performer', '演出人')}</th>
+        <th>${localizeText(language, 'Track', '节目名')}</th>
+        <th>${localizeText(language, 'Host Script', '主持人口播词')}</th>
       </tr>
     </thead>
     <tbody>
-      ${rows || '<tr><td colspan="4">暂无节目数据</td></tr>'}
+      ${rows || `<tr><td colspan="4">${localizeText(language, 'No track data yet.', '暂无节目数据')}</td></tr>`}
     </tbody>
   </table>
 </body>

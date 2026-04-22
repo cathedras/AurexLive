@@ -46,7 +46,7 @@ function migrateLegacyRuntimeFiles() {
     }
 
     fs.renameSync(legacyPath, targetPath);
-    logger.info(`已迁移运行时配置：${legacyPath} -> ${targetPath}`);
+    logger.info(`Migrated runtime configuration: ${legacyPath} -> ${targetPath}`);
   });
 }
 
@@ -54,7 +54,7 @@ function ensureDirectories() {
   [uploadDir, showRecordDir, runtimeConfigDir, recordingDir].forEach(dir => {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
-      logger.info(`已创建目录：${dir}`);
+      logger.info(`Created directory: ${dir}`);
     }
   });
 

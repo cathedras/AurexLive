@@ -9,7 +9,7 @@ const { recordingDir } = require('../config/paths');
 const { uploadDir } = require('../config/paths');
 const { normalizeUploadFileName } = require('../utils/fileUtils');
 
-// 确保录音文件目录存在
+// Ensure the recording directory exists
 if (!fs.existsSync(recordingDir)) {
   fs.mkdirSync(recordingDir, { recursive: true });
 }
@@ -341,18 +341,15 @@ function parseLinuxOutputDevices(raw) {
   return uniqueDevicesByValue(devices);
 }
 
-// 后端启动 ffmpeg 录音并可选将 PCM/音量数据通过 SSE/事件广播
+// Start ffmpeg recording on the backend and optionally broadcast PCM/volume data through SSE/events
 router.post('/start-recording-backend', (req, res) => {
   try {
     const { clientId, device, outFileName, ffmpegArgs } = req.body || {};
 
-    // Build ffmpegArgs if provided as array in body, otherwise require device
-    let args = undefined;
+    let args;
     if (Array.isArray(ffmpegArgs) && ffmpegArgs.length) {
       args = ffmpegArgs;
     } else if (device) {
-      // simple platform-aware convenience: if device provided, use FLAC output with platform capture
-      // caller may provide full ffmpegArgs for precise control
       if (process.platform === 'darwin') {
         args = ['-f', 'avfoundation', '-i', device, '-vn', '-c:a', 'flac', '-compression_level', '12', '-y'];
       } else if (process.platform === 'win32') {
@@ -360,77 +357,80 @@ router.post('/start-recording-backend', (req, res) => {
       } else {
         args = ['-f', 'alsa', '-i', device, '-vn', '-c:a', 'flac', '-compression_level', '12', '-y'];
       }
-      if (outFileName) args.push(path.join(recordingDir, outFileName));
+
+      if (outFileName) {
+        args.push(path.join(recordingDir, outFileName));
+      }
     }
-    // let the recording service decide default device/args when args is undefined
+
     const info = recordingService.startRecordingWithFfmpeg(clientId || null, args, outFileName);
     res.json({ success: true, data: info });
   } catch (error) {
-    res.status(500).json({ success: false, message: '后端启动录音失败', error: error.message });
+    res.status(500).json({ success: false, message: 'Failed to start backend recording', error: error.message });
   }
 });
 
-// 停止后端录音（ffmpeg 或 legacy chunk 模式）
+// Stop backend recording (ffmpeg or legacy chunk mode)
 router.post('/stop-recording-backend', async (req, res) => {
   try {
     const { fileName } = req.body || {};
-    if (!fileName) return res.status(400).json({ success: false, message: '缺少 fileName' });
+    if (!fileName) return res.status(400).json({ success: false, message: 'fileName is required.' });
     const info = await recordingService.stopRecording(fileName);
     res.json({ success: true, data: info });
   } catch (error) {
-    res.status(500).json({ success: false, message: '停止录音失败', error: error.message });
+    res.status(500).json({ success: false, message: 'Failed to stop recording', error: error.message });
   }
 });
 
-// 启动 macOS 实时监听：麦克风输入直出到当前系统输出设备
+// Start macOS live monitoring: route microphone input directly to the current system output device
 router.post('/start-live-mic-playback', (req, res) => {
   try {
     const { device, outputDevice } = req.body || {};
     const result = recordingService.startLiveMicPlayback(device, outputDevice);
 
     if (!result.success) {
-      return res.status(400).json({ success: false, message: '启动实时监听失败', error: result.error });
+      return res.status(400).json({ success: false, message: 'Failed to start live monitoring', error: result.error });
     }
 
     return res.json({ success: true, data: result.data });
   } catch (error) {
-    return res.status(500).json({ success: false, message: '启动实时监听失败', error: error.message });
+    return res.status(500).json({ success: false, message: 'Failed to start live monitoring', error: error.message });
   }
 });
 
-// 停止 macOS 实时监听
+// Stop macOS live monitoring
 router.post('/stop-live-mic-playback', (req, res) => {
   try {
     const result = recordingService.stopLiveMicPlayback();
 
     if (!result.success && result.error !== 'not-running') {
-      return res.status(400).json({ success: false, message: '停止实时监听失败', error: result.error });
+      return res.status(400).json({ success: false, message: 'Failed to stop live monitoring', error: result.error });
     }
 
     return res.json({ success: true, data: result.data || null });
   } catch (error) {
-    return res.status(500).json({ success: false, message: '停止实时监听失败', error: error.message });
+    return res.status(500).json({ success: false, message: 'Failed to stop live monitoring', error: error.message });
   }
 });
 
-// 查询录音状态
+// Query recording status
 router.get('/recording-status', (req, res) => {
   try {
     const fileName = String(req.query?.fileName || '').trim();
     const data = recordingService.getStatus(fileName || undefined);
     res.json({ success: true, data });
   } catch (error) {
-    res.status(500).json({ success: false, message: '查询录音状态失败', error: error.message });
+    res.status(500).json({ success: false, message: 'Failed to query recording status', error: error.message });
   }
 });
 
-// 待开发：前端当前未调用；用于转码任务入列
+// Pending development: not currently used by the frontend; used to enqueue transcoding jobs
 router.post('/convert', (req, res) => {
   try {
     const { fileName, inputUrl, outFileName, ffmpegArgs } = req.body || {};
 
     if (!fileName && !inputUrl && !(Array.isArray(ffmpegArgs) && ffmpegArgs.length)) {
-      return res.status(400).json({ success: false, message: '缺少 fileName/inputUrl/ffmpegArgs' });
+      return res.status(400).json({ success: false, message: 'fileName/inputUrl/ffmpegArgs are required.' });
     }
 
     const jobData = {};
@@ -442,37 +442,37 @@ router.post('/convert', (req, res) => {
     const jobId = ffmpegQueue.enqueue(jobData);
     res.json({ success: true, jobId });
   } catch (error) {
-    res.status(500).json({ success: false, message: '入列失败', error: error.message });
+    res.status(500).json({ success: false, message: 'Failed to enqueue job', error: error.message });
   }
 });
 
-// 待开发：前端当前未调用；用于查询转码队列任务状态
+// Pending development: not currently used by the frontend; used to query transcoding job status
 router.get('/jobs/:id', (req, res) => {
   try {
     const job = ffmpegQueue.getJob(req.params.id);
-    if (!job) return res.status(404).json({ success: false, message: 'job not found' });
+    if (!job) return res.status(404).json({ success: false, message: 'Job not found.' });
     res.json({ success: true, job });
   } catch (error) {
-    res.status(500).json({ success: false, message: '查询失败', error: error.message });
+    res.status(500).json({ success: false, message: 'Failed to query job', error: error.message });
   }
 });
 
-// 待开发：前端当前未调用；用于取消转码队列任务
+// Pending development: not currently used by the frontend; used to cancel transcoding jobs
 router.post('/jobs/:id/cancel', (req, res) => {
   try {
     const ok = ffmpegQueue.cancelJob(req.params.id);
-    if (!ok) return res.status(400).json({ success: false, message: '无法取消或任务已结束' });
+    if (!ok) return res.status(400).json({ success: false, message: 'Unable to cancel the job or the job has already finished.' });
     res.json({ success: true });
   } catch (error) {
-    res.status(500).json({ success: false, message: '取消失败', error: error.message });
+    res.status(500).json({ success: false, message: 'Failed to cancel job', error: error.message });
   }
 });
 
-// 获取录音列表
+// Get the recording list
 router.get('/list-recordings', (req, res) => {
   try {
     const recordings = recordingService.getList();
-    
+
     res.json({
       success: true,
       data: recordings,
@@ -480,7 +480,7 @@ router.get('/list-recordings', (req, res) => {
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: '获取录音列表失败',
+      message: 'Failed to get recording list',
       error: error.message,
     });
   }
@@ -543,13 +543,13 @@ function listOutputDevicesRaw(platform) {
 function switchOutputDeviceRaw(platform, device) {
   const targetDevice = String(device || '').trim();
   if (!targetDevice) {
-    return { success: false, message: '缺少 device' };
+    return { success: false, message: 'device is required.' };
   }
 
   if (platform === 'darwin') {
     const whichSwitch = spawnSync('which', ['SwitchAudioSource'], { encoding: 'utf8' });
     if (!whichSwitch || whichSwitch.status !== 0) {
-      return { success: false, message: '未找到 SwitchAudioSource，请先安装后再切换输出设备' };
+      return { success: false, message: 'SwitchAudioSource was not found. Please install it before switching the output device.' };
     }
 
     const result = spawnSync('SwitchAudioSource', ['-s', targetDevice, '-t', 'output'], { encoding: 'utf8' });
@@ -557,7 +557,7 @@ function switchOutputDeviceRaw(platform, device) {
       const errorText = String(result?.stderr || result?.stdout || '').trim();
       return {
         success: false,
-        message: errorText || `切换输出设备失败: ${targetDevice}`,
+          message: errorText || `Failed to switch output device: ${targetDevice}`,
       };
     }
 
@@ -578,7 +578,7 @@ function switchOutputDeviceRaw(platform, device) {
         const errorText = String(pactlResult?.stderr || pactlResult?.stdout || '').trim();
         return {
           success: false,
-          message: errorText || `切换输出设备失败: ${targetDevice}`,
+          message: errorText || `Failed to switch output device: ${targetDevice}`,
         };
       }
 
@@ -591,14 +591,14 @@ function switchOutputDeviceRaw(platform, device) {
       };
     }
 
-    return { success: false, message: '当前系统未安装 pactl，无法切换输出设备' };
+    return { success: false, message: 'pactl is not installed on the current system, so the output device cannot be switched.' };
   }
 
   if (platform === 'win32') {
-    return { success: false, message: '当前平台暂不支持通过后端切换输出设备' };
+    return { success: false, message: 'Switching the output device through the backend is not supported on Windows yet.' };
   }
 
-  return { success: false, message: `当前平台 ${platform} 暂不支持切换输出设备` };
+  return { success: false, message: `Switching the output device is not supported on platform ${platform} yet.` };
 }
 
 function parseMacOutputDevices(raw) {
@@ -609,7 +609,7 @@ function parseMacOutputDevices(raw) {
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       devices.push(buildDeviceEntry({
-        label: i === 0 ? `${line}（默认）` : line,
+        label: i === 0 ? `${line} (default)` : line,
         value: line,
         isDefault: i === 0,
         kind: inferDeviceKind(line, { routeType: 'output' }),
@@ -692,7 +692,7 @@ function parseOutputDevices(raw, platform) {
   return parseLinuxOutputDevices(raw);
 }
 
-// 列出可用输入音频设备（基于 ffmpeg / platform probes）
+// List available input audio devices (based on ffmpeg / platform probes)
 router.get(['/list-input-devices', '/list-devices'], (req, res) => {
   try {
     const platform = process.platform;
@@ -700,11 +700,11 @@ router.get(['/list-input-devices', '/list-devices'], (req, res) => {
     const devices = parseInputDevices(raw, platform);
     res.json({ success: true, platform, deviceType: 'input', devices, raw });
   } catch (error) {
-    res.status(500).json({ success: false, message: '列出输入设备失败', error: error.message });
+    res.status(500).json({ success: false, message: 'Failed to list input devices', error: error.message });
   }
 });
 
-// 列出可用输出音频设备（系统输出 / sink）
+// List available output audio devices (system outputs / sinks)
 router.get('/list-output-devices', (req, res) => {
   try {
     const platform = process.platform;
@@ -719,11 +719,11 @@ router.get('/list-output-devices', (req, res) => {
       ...(includeRaw ? { raw } : {}),
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: '列出输出设备失败', error: error.message });
+    res.status(500).json({ success: false, message: 'Failed to list output devices', error: error.message });
   }
 });
 
-// 切换系统输出设备（macOS 通过 SwitchAudioSource，Linux 通过 pactl）
+// Switch the system output device (SwitchAudioSource on macOS, pactl on Linux)
 router.post('/switch-output-device', (req, res) => {
   try {
     const { device } = req.body || {};
@@ -733,26 +733,26 @@ router.post('/switch-output-device', (req, res) => {
     if (!result.success) {
       return res.status(400).json({
         success: false,
-        message: result.message || '切换输出设备失败',
+        message: result.message || 'Failed to switch output device.',
       });
     }
 
     return res.json({ success: true, data: result });
   } catch (error) {
-    return res.status(500).json({ success: false, message: '切换输出设备失败', error: error.message });
+    return res.status(500).json({ success: false, message: 'Failed to switch output device.', error: error.message });
   }
 });
 
-// 删除录音文件
+// Delete a recording file
 router.delete('/:filename', async (req, res) => {
   try {
     const filename = req.params.filename;
     
-    // 验证文件名安全性
+    // Validate filename safety
     if (path.resolve(recordingDir, filename).indexOf(recordingDir) !== 0) {
       return res.status(400).json({
         success: false,
-        message: '无效的文件路径',
+        message: 'Invalid file path.',
       });
     }
     
@@ -760,30 +760,30 @@ router.delete('/:filename', async (req, res) => {
     
     res.json({
       success: true,
-      message: '录音文件已删除',
+      message: 'Recording file deleted.',
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: '删除录音文件失败',
+      message: 'Failed to delete recording file.',
       error: error.message,
     });
   }
 });
 
-// 将录音复制到 uploads，并使用指定的显示名（前端用于“使用录音”功能）
+// Copy a recording to uploads and use the specified display name (for the frontend "use recording" flow)
 router.post('/use-recording', async (req, res) => {
   try {
     const { filename, newName } = req.body || {};
-    if (!filename) return res.status(400).json({ success: false, message: '缺少 filename' });
+    if (!filename) return res.status(400).json({ success: false, message: 'filename is required.' });
 
     const srcPath = path.join(recordingDir, filename);
     if (path.resolve(srcPath).indexOf(recordingDir) !== 0) {
-      return res.status(400).json({ success: false, message: '无效的文件路径' });
+      return res.status(400).json({ success: false, message: 'Invalid file path.' });
     }
 
     if (!fs.existsSync(srcPath)) {
-      return res.status(404).json({ success: false, message: '源录音不存在' });
+      return res.status(404).json({ success: false, message: 'Source recording not found.' });
     }
 
     if (!fs.existsSync(uploadDir)) {
@@ -796,7 +796,7 @@ router.post('/use-recording', async (req, res) => {
     const destName = `${uniqueSuffix}-${normalized}`;
     const destPath = path.join(uploadDir, destName);
 
-    // copy file
+    // Copy file
     fs.copyFileSync(srcPath, destPath);
 
     const stats = fs.statSync(destPath);
@@ -812,7 +812,7 @@ router.post('/use-recording', async (req, res) => {
       }
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: '复制录音失败', error: error.message });
+    res.status(500).json({ success: false, message: 'Failed to copy recording.', error: error.message });
   }
 });
 

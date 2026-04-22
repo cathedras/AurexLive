@@ -34,8 +34,10 @@ import {
   openProgramSheetWindow,
   reorderTracks,
 } from '../services/musicPlay'
+import { useLanguage } from '../context/languageContext'
 
 function MusicPage() {
+  const { t } = useLanguage()
   const [currentTrackId, setCurrentTrackId] = useState(null)
   const [draggingId, setDraggingId] = useState(null)
   const [message, setMessage] = useState('')
@@ -118,23 +120,23 @@ function MusicPage() {
 
   const clearCurrentProgramInfo = useCallback(async () => {
     try {
-      if (currentProgramName !== '暂无节目' || currentPerformerName !== '暂无演出人员') {
+      if (currentProgramName !== t('No track yet', '暂无节目') || currentPerformerName !== t('No performer yet', '暂无演出人员')) {
         // Call backend to clear current program and performer in the current show JSON
         // Assuming an API method like clearCurrentProgramInfo or updateCurrentShow exists
         await musicPageApi.updateCurrentProgram({ programName: null, performerName: null, clearCurrentProgram: true })
 
-        setCurrentProgramName('暂无节目')
-        setCurrentPerformerName('暂无演出人员')
+        setCurrentProgramName(t('No track yet', '暂无节目'))
+        setCurrentPerformerName(t('No performer yet', '暂无演出人员'))
       }
     } catch (error) {
-      setMessage(`清除当前节目信息失败：${error.message}`)
+      setMessage(t(`Failed to clear the current track info: ${error.message}`, `清除当前节目信息失败：${error.message}`))
       // Fallback to local update if needed, or keep old values? 
       // For now, we update locally even on error to match UI expectation, 
       // but ideally, we might revert.
-      setCurrentProgramName('暂无节目')
-      setCurrentPerformerName('暂无演出人员')
+      setCurrentProgramName(t('No track yet', '暂无节目'))
+      setCurrentPerformerName(t('No performer yet', '暂无演出人员'))
     }
-  }, [currentPerformerName, currentProgramName, musicPageApi, setCurrentPerformerName, setCurrentProgramName])
+  }, [currentPerformerName, currentProgramName, musicPageApi, setCurrentPerformerName, setCurrentProgramName, t])
 
   useEffect(() => {
     const backendSavedName = String(backendPlayback.currentTrack?.savedName || '').trim()
@@ -196,7 +198,7 @@ function MusicPage() {
     try {
       const result = await musicPageApi.updateCurrentShowLock(nextLocked)
       if (!result.success) {
-        throw new Error(result.message || '更新锁定状态失败')
+        throw new Error(result.message || t('Failed to update lock state', '更新锁定状态失败'))
       }
 
       setIsPlaylistLocked(Boolean(result.currentShow?.playlistLocked ?? nextLocked))
@@ -207,7 +209,7 @@ function MusicPage() {
         Boolean(result.currentShow?.playlistLocked ?? nextLocked),
       )
     } catch (error) {
-      setMessage(`更新锁定状态失败：${error.message}`)
+      setMessage(t(`Failed to update lock state: ${error.message}`, `更新锁定状态失败：${error.message}`))
     }
   }
 
@@ -215,7 +217,7 @@ function MusicPage() {
     try {
       const result = await musicPageApi.closeCurrentShow()
       if (!result.success) {
-        throw new Error(result.message || '关闭当前演出失败')
+        throw new Error(result.message || t('Failed to close current show', '关闭当前演出失败'))
       }
 
       setCurrentTrackId(null)
@@ -223,9 +225,9 @@ function MusicPage() {
       clearCurrentProgramInfo()
       setTracks([])
       await refreshPageData()
-      setMessage(result.message || '当前演出已关闭')
+      setMessage(result.message || t('Current show closed.', '当前演出已关闭'))
     } catch (error) {
-      setMessage(`关闭当前演出失败：${error.message}`)
+      setMessage(t(`Failed to close current show: ${error.message}`, `关闭当前演出失败：${error.message}`))
     }
   }
 
@@ -336,23 +338,23 @@ function MusicPage() {
   const openSheetWindow = (title, shouldPrint = false) => {
     const opened = openProgramSheetWindow(tracks, title, shouldPrint)
     if (!opened) {
-      setMessage('浏览器拦截了新窗口，请允许弹窗后重试。')
+      setMessage(t('The browser blocked a new window. Please allow pop-ups and try again.', '浏览器拦截了新窗口，请允许弹窗后重试。'))
     }
   }
 
   const onPrintProgramSheet = () => {
-    openSheetWindow('节目单（打印）', true)
+    openSheetWindow(t('Setlist (Print)', '节目单（打印）'), true)
   }
 
   return (
     <div className="container music-container" style={{ fontSize: `${fontScalePercent}%` }}>
       <div className="page-actions">
-        <Link to="/page" className="back-link">返回首页</Link>
-        <Link to="/page/settings" className="back-link">用户设置</Link>
-        <Link to="/page/recording" className="back-link">录音机</Link>
+        <Link to="/page" className="back-link">{t('Back to home', '返回首页')}</Link>
+        <Link to="/page/settings" className="back-link">{t('Settings', '用户设置')}</Link>
+        <Link to="/page/recording" className="back-link">{t('Recorder', '录音机')}</Link>
       </div>
 
-      <h1>音乐播放</h1>
+      <h1>{t('Music playback', '音乐播放')}</h1>
 
       <MusicMarqueePanel
         marqueeSpeedSec={marqueeSpeedSec}

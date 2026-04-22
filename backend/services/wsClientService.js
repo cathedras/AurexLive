@@ -43,7 +43,7 @@ class WsClientService {
         return client ? client.ws : null;
     }
 
-    // 返回匹配类型的客户端数组: [{ clientId, ws }]
+    // Return an array of clients that match the given type: [{ clientId, ws }]
     getClientsByType(type) {
         const out = [];
         for (const [id, client] of this.clients.entries()) {
@@ -53,7 +53,7 @@ class WsClientService {
         return out;
     }
 
-    //Send message to target client
+    // Send a message to the target client
     sendToClient(clientId, message) {
         const client = this.clients.get(clientId);
         if (!client) return false;
@@ -86,7 +86,7 @@ class WsClientService {
         }
     }
 
-    // 广播消息给所有客户端（安全发送）
+    // Broadcast a message to all clients (safe send)
     broadcast(message, type) {
         for (const [id, client] of this.clients.entries()) {
             const ws = client && client.ws;
@@ -100,11 +100,11 @@ class WsClientService {
         }
     }
 
-    // 广播音量数据给订阅了特定录音文件的客户端
+    // Broadcast volume data to clients subscribed to a specific recording file
     broadcastVolume(volumeData) {
         const { fileName } = volumeData || {};
         if (!fileName) {
-            // 如果没有指定文件名，广播给所有客户端
+            // If no file name is specified, broadcast to all clients
             this.broadcast(volumeData, 'volume');
             return;
         }
@@ -112,7 +112,7 @@ class WsClientService {
         for (const [id, client] of this.clients.entries()) {
             const ws = client && client.ws;
             try {
-                // 只发送给订阅了该录音文件的客户端，或者没有特定订阅的客户端
+                // Send only to clients subscribed to this recording file, or to clients without a specific subscription
                 if (ws && ws.readyState === WebSocket.OPEN) {
                     const subscribedFile = client.subscribedFile;
                     if (!subscribedFile || subscribedFile === fileName) {

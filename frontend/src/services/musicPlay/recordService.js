@@ -8,7 +8,7 @@ export const getRecordingStatus = async (fileName) => {
     const params = fileName ? { fileName } : {}
     return await apiGet(`${BASE_URL}/recording-status`, { params })
   } catch (error) {
-    console.error('获取录音状态失败:', error)
+    console.error('Failed to fetch recording status:', error)
     throw error
   }
 }
@@ -17,7 +17,7 @@ export const getRecordingList = async () => {
   try {
     return await apiGet(`${BASE_URL}/list-recordings`)
   } catch (error) {
-    console.error('获取录音列表失败:', error)
+    console.error('Failed to fetch recording list:', error)
     throw error
   }
 }
@@ -26,7 +26,7 @@ export const listInputDevices = async () => {
   try {
     return await apiGet(`${BASE_URL}/list-input-devices`)
   } catch (error) {
-    console.error('列出输入设备失败:', error)
+    console.error('Failed to list input devices:', error)
     throw error
   }
 }
@@ -35,7 +35,7 @@ export const listOutputDevices = async () => {
   try {
     return await apiGet(`${BASE_URL}/list-output-devices`)
   } catch (error) {
-    console.error('列出输出设备失败:', error)
+    console.error('Failed to list output devices:', error)
     throw error
   }
 }
@@ -44,7 +44,7 @@ export const switchOutputDevice = async (device) => {
   try {
     return await apiPost(`${BASE_URL}/switch-output-device`, { device })
   } catch (error) {
-    console.error('切换输出设备失败:', error)
+    console.error('Failed to switch output device:', error)
     throw error
   }
 }
@@ -55,7 +55,7 @@ export const deleteRecording = async (filename) => {
   try {
     return await apiDelete(`${BASE_URL}/${encodeURIComponent(filename)}`)
   } catch (error) {
-    console.error('删除录音失败:', error)
+    console.error('Failed to delete recording:', error)
     throw error
   }
 }
@@ -64,7 +64,7 @@ export const startRecordingBackend = async ({ clientId, device, outFileName } = 
   try {
     return await apiPost(`${BASE_URL}/start-recording-backend`, { clientId, device, outFileName })
   } catch (error) {
-    console.error('后端开始录音失败:', error)
+    console.error('Failed to start backend recording:', error)
     throw error
   }
 }
@@ -73,7 +73,7 @@ export const stopRecordingBackend = async (fileName) => {
   try {
     return await apiPost(`${BASE_URL}/stop-recording-backend`, { fileName })
   } catch (error) {
-    console.error('后端停止录音失败:', error)
+    console.error('Failed to stop backend recording:', error)
     throw error
   }
 }
@@ -82,7 +82,7 @@ export const startLiveMicPlayback = async (device, outputDevice) => {
   try {
     return await apiPost(`${BASE_URL}/start-live-mic-playback`, { device, outputDevice })
   } catch (error) {
-    console.error('启动实时监听失败:', error)
+    console.error('Failed to start live monitoring:', error)
     throw error
   }
 }
@@ -91,7 +91,7 @@ export const stopLiveMicPlayback = async () => {
   try {
     return await apiPost(`${BASE_URL}/stop-live-mic-playback`, {})
   } catch (error) {
-    console.error('停止实时监听失败:', error)
+    console.error('Failed to stop live monitoring:', error)
     throw error
   }
 }
@@ -100,7 +100,7 @@ export const recordingUse = async (filename, newName) => {
   try {
     return await apiPost(`${BASE_URL}/use-recording`, { filename, newName })
   } catch (error) {
-    console.error('使用录音失败:', error)
+    console.error('Failed to use recording:', error)
     throw error
   }
 }

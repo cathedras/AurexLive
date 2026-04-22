@@ -44,7 +44,7 @@ router.get('/state', (req, res) => {
       }
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: `读取实时状态失败：${error.message}` });
+    return res.status(500).json({ success: false, message: `Failed to read live state: ${error.message}` });
   }
 });
 
@@ -52,7 +52,7 @@ router.post('/playback', (req, res) => {
   try {
     const action = String(req.body?.action || '').trim();
     if (!['play', 'pause'].includes(action)) {
-      return res.status(400).json({ success: false, message: '无效操作，仅支持 play/pause' });
+      return res.status(400).json({ success: false, message: 'Invalid action; only play/pause are supported.' });
     }
 
     const prev = readLiveState();
@@ -81,7 +81,7 @@ router.post('/playback', (req, res) => {
       }
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: `更新播放控制失败：${error.message}` });
+    return res.status(500).json({ success: false, message: `Failed to update playback control: ${error.message}` });
   }
 });
 
@@ -89,7 +89,7 @@ router.post('/effect', (req, res) => {
   try {
     const effectName = String(req.body?.effectName || '').trim();
     if (!effectName) {
-      return res.status(400).json({ success: false, message: '音效名称不能为空' });
+      return res.status(400).json({ success: false, message: 'Effect name is required.' });
     }
 
     const prev = readLiveState();
@@ -101,7 +101,7 @@ router.post('/effect', (req, res) => {
 
     return res.json({ success: true, state: next });
   } catch (error) {
-    return res.status(500).json({ success: false, message: `更新音效控制失败：${error.message}` });
+    return res.status(500).json({ success: false, message: `Failed to update effect control: ${error.message}` });
   }
 });
 

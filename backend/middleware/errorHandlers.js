@@ -18,7 +18,7 @@ function notFoundHandler(req, res) {
 
   return res.status(404).json({
     success: false,
-    message: '资源不存在'
+    message: 'Resource not found.'
   });
 }
 
@@ -35,7 +35,7 @@ function errorHandler(err, req, res, next) {
 
   return res.status(500).json({
     success: false,
-    message: '服务器内部错误',
+    message: 'Internal server error.',
     requestId: req.requestId || null
   });
 }
