@@ -15,7 +15,6 @@ const defaultSettings = {
   preferences: {
     theme: 'light',
     fontScale: 100,
-    autoPlay: true,
     marqueeSpeed: 16
   },
   speech: {
@@ -31,14 +30,17 @@ const defaultSettings = {
 };
 
 function mergeSettings(input = {}) {
+  const preferencesInput = input.preferences || {};
+
   return {
     profile: {
       ...defaultSettings.profile,
       ...(input.profile || {})
     },
     preferences: {
-      ...defaultSettings.preferences,
-      ...(input.preferences || {})
+      theme: preferencesInput.theme || defaultSettings.preferences.theme,
+      fontScale: Number(preferencesInput.fontScale || defaultSettings.preferences.fontScale),
+      marqueeSpeed: Number(preferencesInput.marqueeSpeed || defaultSettings.preferences.marqueeSpeed)
     },
     speech: {
       ...defaultSettings.speech,

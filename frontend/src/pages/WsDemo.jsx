@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 
 import buildWsAttemptUrls from '../services/ws-addrconfig'
 
@@ -6,7 +6,7 @@ export default function WsDemo() {
   const [url, setUrl] = useState(() => {
     try {
       return buildWsAttemptUrls()[0] || ''
-    } catch (e) {
+    } catch {
       return 'wss://localhost:3000'
     }
   })
@@ -15,13 +15,31 @@ export default function WsDemo() {
   const [input, setInput] = useState('')
   const wsRef = useRef(null)
 
+  function formatTime(date) {
+    try {
+      const d = new Date(date)
+      const hh = String(d.getHours()).padStart(2, '0')
+      const mm = String(d.getMinutes()).padStart(2, '0')
+      const ss = String(d.getSeconds()).padStart(2, '0')
+      const ms = String(d.getMilliseconds()).padStart(3, '0')
+      return `${hh}:${mm}:${ss}.${ms}`
+    } catch {
+      return new Date().toISOString()
+    }
+  }
+
+  const appendLog = useCallback((item) => {
+    const ts = formatTime(new Date())
+    setLog((current) => [...current, { ts, ...item }])
+  }, [])
+
   useEffect(() => {
     function handleWindowError(e) {
       try {
         const loc = e.filename ? `${e.filename}:${e.lineno}:${e.colno}` : ''
         const stack = e.error && e.error.stack ? `\n${e.error.stack}` : ''
         appendLog({ type: 'page-error', text: `${e.message} ${loc}${stack}` })
-      } catch (err) {
+      } catch {
         appendLog({ type: 'page-error', text: String(e) })
       }
     }
@@ -33,7 +51,7 @@ export default function WsDemo() {
           reason = JSON.stringify(reason, Object.getOwnPropertyNames(reason))
         }
         appendLog({ type: 'unhandledrejection', text: `UnhandledRejection: ${reason}` })
-      } catch (err) {
+      } catch {
         appendLog({ type: 'unhandledrejection', text: String(e) })
       }
     }
@@ -49,25 +67,7 @@ export default function WsDemo() {
         wsRef.current = null
       }
     }
-  }, [])
-
-  function formatTime(date) {
-    try {
-      const d = new Date(date)
-      const hh = String(d.getHours()).padStart(2, '0')
-      const mm = String(d.getMinutes()).padStart(2, '0')
-      const ss = String(d.getSeconds()).padStart(2, '0')
-      const ms = String(d.getMilliseconds()).padStart(3, '0')
-      return `${hh}:${mm}:${ss}.${ms}`
-    } catch (e) {
-      return new Date().toISOString()
-    }
-  }
-
-  function appendLog(item) {
-    const ts = formatTime(new Date())
-    setLog((l) => [...l, { ts, ...item }])
-  }
+  }, [appendLog])
 
   function connect() {
     if (wsRef.current) return
@@ -105,7 +105,7 @@ export default function WsDemo() {
           if (ev && ev.message) info = ev.message
           else if (ev && ev.error && ev.error.message) info = ev.error.message
           else info = JSON.stringify(ev)
-        } catch (err) {
+        } catch {
           info = String(ev)
         }
         appendLog({ type: 'error', text: `WebSocket error: ${info}` })
@@ -116,7 +116,9 @@ export default function WsDemo() {
         ws.addEventListener('error', (e) => {
           appendLog({ type: 'error', text: `WebSocket event error: ${JSON.stringify(e)}` })
         })
-      } catch (e) {}
+      } catch {
+        // ignore
+      }
     } catch (err) {
       appendLog({ type: 'error', text: String(err) })
     }
@@ -138,7 +140,7 @@ export default function WsDemo() {
     try {
       JSON.parse(input)
       payload = input
-    } catch (e) {
+    } catch {
       payload = input
     }
     try {

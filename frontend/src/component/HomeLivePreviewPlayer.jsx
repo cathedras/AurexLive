@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Device } from 'mediasoup-client'
 
 import { apiGet } from '../services/apiClientUtil'
@@ -40,7 +40,6 @@ function HomeLivePreviewPlayer() {
   const [errorMessage, setErrorMessage] = useState('')
   const [isPlaying, setIsPlaying] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
-  const [producerSummary, setProducerSummary] = useState([])
 
   const cleanupPreviewResources = async () => {
     if (monitorSocketRef.current) {
@@ -88,7 +87,7 @@ function HomeLivePreviewPlayer() {
     consumedProducerIdsRef.current = new Set()
   }
 
-  const attachStreamToVideo = async () => {
+  const attachStreamToVideo = useCallback(async () => {
     const video = videoRef.current
     if (!video || !streamRef.current) {
       return
@@ -112,9 +111,9 @@ function HomeLivePreviewPlayer() {
     } catch {
       // A user gesture already happened; keep the stream attached.
     }
-  }
+  }, [])
 
-  const ensureDevice = async () => {
+  const ensureDevice = useCallback(async () => {
     if (deviceRef.current) {
       return deviceRef.current
     }
@@ -128,9 +127,9 @@ function HomeLivePreviewPlayer() {
     await device.load({ routerRtpCapabilities: rtpCapabilitiesResult.rtpCapabilities })
     deviceRef.current = device
     return device
-  }
+  }, [])
 
-  const ensureRecvTransport = async (sessionId) => {
+  const ensureRecvTransport = useCallback(async (sessionId) => {
     const device = await ensureDevice()
 
     if (recvTransportRef.current) {
@@ -180,9 +179,9 @@ function HomeLivePreviewPlayer() {
     }
 
     return recvTransport
-  }
+  }, [ensureDevice])
 
-  const consumeKnownProducers = async (sessionId, producers) => {
+  const consumeKnownProducers = useCallback(async (sessionId, producers) => {
     if (!Array.isArray(producers) || producers.length === 0) {
       return
     }
@@ -237,7 +236,7 @@ function HomeLivePreviewPlayer() {
       await attachStreamToVideo()
       setPreviewStatus('视频预览已启动。')
     }
-  }
+  }, [attachStreamToVideo, ensureRecvTransport])
 
   const loadLatestSession = async () => {
     const result = await fetchWebRtcSessions()
@@ -281,7 +280,6 @@ function HomeLivePreviewPlayer() {
       }
 
       const producers = Array.isArray(producersResult.producers) ? producersResult.producers : []
-      setProducerSummary(producers)
 
       if (producers.length === 0) {
         setPreviewStatus('会话已连接，正在等待主播推流。')
@@ -350,7 +348,6 @@ function HomeLivePreviewPlayer() {
               setPreviewStatus('会话已关闭。')
               setMonitorStatus('已断开')
               setIsPlaying(false)
-              setProducerSummary([])
               return
             }
 
@@ -362,14 +359,6 @@ function HomeLivePreviewPlayer() {
                 createdAt: payload.createdAt || new Date().toISOString(),
                 appData: payload.appData || {},
               }
-
-              setProducerSummary((current) => {
-                if (current.some((producer) => producer.producerId === nextProducer.producerId)) {
-                  return current
-                }
-
-                return [...current, nextProducer]
-              })
 
               consumeKnownProducers(previewSession.sessionId, [nextProducer]).catch((error) => {
                 setErrorMessage(error.message || '消费新 Producer 失败')
@@ -418,7 +407,7 @@ function HomeLivePreviewPlayer() {
         monitorSocketRef.current = null
       }
     }
-  }, [isPlaying, previewSession?.sessionId])
+  }, [consumeKnownProducers, isPlaying, previewSession?.sessionId])
 
   useEffect(() => () => {
     void cleanupPreviewResources()
@@ -429,7 +418,6 @@ function HomeLivePreviewPlayer() {
       <div className="home-live-preview-stage">
         <video
           ref={videoRef}
-          autoPlay
           playsInline
           muted
           className="home-live-preview-video"

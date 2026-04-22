@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { fetchFileList as loadFileList, uploadFileWithProgress } from '../services/upload/uploadService'
@@ -10,10 +10,6 @@ function UploadPage() {
   const [uploadPercent, setUploadPercent] = useState(0)
   const [isUploading, setIsUploading] = useState(false)
   const [files, setFiles] = useState([])
-
-  useEffect(() => {
-    fetchFileList()
-  }, [])
 
   const showMessage = (text, type = 'success') => {
     setMessage(text)
@@ -76,7 +72,7 @@ function UploadPage() {
     }
   }
 
-  const fetchFileList = async () => {
+  const fetchFileList = useCallback(async () => {
     try {
       const result = await loadFileList()
       if (!result.success) {
@@ -88,7 +84,11 @@ function UploadPage() {
       setFiles([])
       showMessage(`列表加载失败：${error.message}`, 'error')
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    fetchFileList()
+  }, [fetchFileList])
 
   return (
     <div className="container">

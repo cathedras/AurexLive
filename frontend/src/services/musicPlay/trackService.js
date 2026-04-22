@@ -1,10 +1,10 @@
 export function mergeRuntimeSettings(input = {}) {
+  const preferencesInput = input.preferences || {}
+
   return {
     preferences: {
-      autoPlay: true,
-      marqueeSpeed: 16,
-      fontScale: 100,
-      ...(input.preferences || {}),
+      marqueeSpeed: Number(preferencesInput.marqueeSpeed || 16),
+      fontScale: Number(preferencesInput.fontScale || 100),
     },
     speech: {
       mode: 'ai',

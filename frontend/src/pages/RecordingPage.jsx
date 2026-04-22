@@ -1,11 +1,11 @@
 import { Copy, Headphones, Pause, Play, Trash2 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import * as Tooltip from '@radix-ui/react-tooltip'
 
-import { useFloatingAudioPlayer } from '../component/FloatingAudioPlayer'
+import { useFloatingAudioPlayer } from '../component/FloatingAudioPlayerContext'
 import Modal from '../component/Modal'
-import { deleteRecording, getRecordingList, startLiveMicPlayback, startRecordingBackend, stopLiveMicPlayback, stopRecordingBackend, switchOutputDevice, useRecording } from '../services/musicPlay'
+import { deleteRecording, getRecordingList, startLiveMicPlayback, startRecordingBackend, stopLiveMicPlayback, stopRecordingBackend, switchOutputDevice, recordingUse } from '../services/musicPlay'
 import wsClientService from '../services/wsClientService'
 
 const DEVICE_KIND_LABELS = {
@@ -162,22 +162,22 @@ const RecordingPage = () => {
   const isExternalAudioRecording = isRecording && recordingMode === 'external';
   const isNormalRecording = isRecording && recordingMode !== 'external';
 
-  const resetVolumeDisplay = () => {
+  const resetVolumeDisplay = useCallback(() => {
     volumeTargetRef.current = 0;
     volumeDisplayRef.current = 0;
     if (volumeValueRef.current) {
       volumeValueRef.current.textContent = '当前音量: 0%';
     }
-  };
+  }, []);
 
-  const closeVolumeSocket = () => {
+  const closeVolumeSocket = useCallback(() => {
     if (ws && ws.close) {
       try { ws.close(); } catch (e) { }
     }
     setWs(null);
     setWsConnected(false);
     resetVolumeDisplay();
-  };
+  }, [resetVolumeDisplay, ws]);
 
   const resetExternalAutoRuntime = () => {
     externalAutoMonitorSinceRef.current = null;
@@ -431,7 +431,7 @@ const RecordingPage = () => {
   };
 
   // 加载录音列表
-  const loadRecordings = async () => {
+  const loadRecordings = useCallback(async () => {
     try {
       const result = await getRecordingList();
       if (result.success) {
@@ -440,7 +440,7 @@ const RecordingPage = () => {
     } catch (err) {
       setStatusMessage('error', '加载录音列表失败: ' + err.message);
     }
-  };
+  }, []);
 
   // 初始化录音状态
   useEffect(() => {
@@ -535,7 +535,7 @@ const RecordingPage = () => {
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, []);
+  }, [isMacPlatform, loadRecordings, ws]);
 
   useEffect(() => {
     if (!isRecording && !livePlaybackEnabled) {
@@ -888,7 +888,7 @@ const RecordingPage = () => {
     if (!useTarget) return;
     setUseDialogOpen(false);
     try {
-      await useRecording(useTarget, useNewName);
+      await recordingUse(useTarget, useNewName);
       // refresh recordings list after copying
       await loadRecordings();
     } catch (err) {
@@ -907,7 +907,7 @@ const RecordingPage = () => {
     try {
       setLoading(true);
       const names = recordings.map(r => r.filename).filter(Boolean);
-      await Promise.all(names.map(n => deleteRecording(n).catch(e => null)));
+      await Promise.all(names.map(n => deleteRecording(n).catch(() => null)));
       await loadRecordings();
     } catch (err) {
       setStatusMessage('error', '清空录音失败: ' + (err && err.message ? err.message : err));
@@ -1062,7 +1062,7 @@ const RecordingPage = () => {
       } catch (e) { }
       closeVolumeSocket();
     };
-  }, []);
+  }, [closeVolumeSocket]);
 
   return (
     <Tooltip.Provider>

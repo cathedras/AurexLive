@@ -1,4 +1,4 @@
-import httpClient, { apiDelete, apiGet, apiPost } from '../apiClientUtil'
+import { apiDelete, apiGet, apiPost } from '../apiClientUtil'
 import wsClient from '../wsClientService.js'
 
 const BASE_URL = `${String(import.meta.env.VITE_API_BASE_URL || '/v1').replace(/\/$/, '')}/recording`
@@ -96,7 +96,7 @@ export const stopLiveMicPlayback = async () => {
   }
 }
 
-export const useRecording = async (filename, newName) => {
+export const recordingUse = async (filename, newName) => {
   try {
     return await apiPost(`${BASE_URL}/use-recording`, { filename, newName })
   } catch (error) {

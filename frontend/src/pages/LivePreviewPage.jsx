@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Device } from 'mediasoup-client'
 import { Link, useSearchParams } from 'react-router-dom'
 
@@ -38,7 +38,7 @@ function LivePreviewPage() {
   })
   const monitorLogSeqRef = useRef(0)
 
-  const appendMonitorLog = (message, data = null) => {
+  const appendMonitorLog = useCallback((message, data = null) => {
     const details = (() => {
       if (data == null) return ''
       if (typeof data === 'string') return data
@@ -58,9 +58,9 @@ function LivePreviewPage() {
     }
 
     setMonitorLogs((current) => [...current.slice(-19), nextLog])
-  }
+  }, [])
 
-  const captureVideoDebug = (label) => {
+  const captureVideoDebug = useCallback((label) => {
     const video = videoRef.current
     if (!video) {
       return
@@ -85,9 +85,9 @@ function LivePreviewPage() {
 
     setVideoDebug(nextVideoDebug)
     console.log('🎬 preview video debug', nextVideoDebug)
-  }
+  }, [])
 
-  const attachStreamToVideo = async () => {
+  const attachStreamToVideo = useCallback(async () => {
     const video = videoRef.current
     if (!video || !streamRef.current) {
       return
@@ -130,7 +130,7 @@ function LivePreviewPage() {
       console.log(err)
       captureVideoDebug('play-promise-rejected')
     }
-  }
+  }, [captureVideoDebug])
 
   useEffect(() => {
     if (!sessionId) {
@@ -383,7 +383,7 @@ function LivePreviewPage() {
       deviceRef.current = null
       consumedProducerIdsRef.current = new Set()
     }
-  }, [sessionId])
+  }, [appendMonitorLog, attachStreamToVideo, captureVideoDebug, sessionId])
 
   useEffect(() => {
     if (!sessionId) {
@@ -507,7 +507,7 @@ function LivePreviewPage() {
         }
       }
     }
-  }, [sessionId])
+  }, [appendMonitorLog, sessionId])
 
   return (
     <div className="live-preview-page">
@@ -523,7 +523,6 @@ function LivePreviewPage() {
           <div className="live-preview-page-video-card">
             <video
               ref={videoRef}
-              autoPlay
               playsInline
               controls
               muted

@@ -1,6 +1,6 @@
-import { createContext, useContext, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
-const FloatingAudioPlayerContext = createContext(null)
+import { FloatingAudioPlayerContext } from './FloatingAudioPlayerContext'
 
 function formatProgressTime(seconds) {
   const safeSeconds = Math.max(0, Math.floor(Number(seconds || 0)))
@@ -64,6 +64,7 @@ function FloatingAudioPlayerPanel({ playerState, backendPlayback, localProgress,
           </div>
         </div>
         <div className="floating-audio-player-actions">
+          <button type="button" className="floating-audio-player-btn" onClick={onToggleCollapsed}>{playerState.collapsed ? '展开' : '折叠'}</button>
           <button type="button" className="floating-audio-player-btn" onClick={onClose}>关闭</button>
         </div>
       </div>
@@ -86,7 +87,6 @@ function FloatingAudioPlayerPanel({ playerState, backendPlayback, localProgress,
                 ref={audioRef}
                 className="floating-audio-player-video"
                 controls
-                autoPlay
                 style={{ width: '100%', maxHeight: '240px', background: '#000', borderRadius: '4px' }}
                 onPlay={onAudioPlay}
                 onPause={onAudioPause}
@@ -168,7 +168,7 @@ export function FloatingAudioPlayerProvider({ children }) {
         message: '已打开预听工具，请点击播放按钮继续。',
       }))
     })
-  }, [playerState.visible, playerState.url, playerState.playbackRequestId])
+  }, [playerState.visible, playerState.syncOnly, playerState.url, playerState.playbackRequestId])
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.EventSource === 'undefined') {
@@ -295,11 +295,3 @@ export function FloatingAudioPlayerProvider({ children }) {
   )
 }
 
-export function useFloatingAudioPlayer() {
-  const context = useContext(FloatingAudioPlayerContext)
-  if (!context) {
-    throw new Error('useFloatingAudioPlayer 必须在 FloatingAudioPlayerProvider 内使用')
-  }
-
-  return context
-}

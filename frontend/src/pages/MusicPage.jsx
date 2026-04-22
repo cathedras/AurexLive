@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useFloatingAudioPlayer } from '../component/FloatingAudioPlayer'
+import { useFloatingAudioPlayer } from '../component/FloatingAudioPlayerContext'
 import {
   DeleteTrackDialog,
   ExportPdfDialog,
@@ -34,7 +34,6 @@ import {
   openProgramSheetWindow,
   reorderTracks,
 } from '../services/musicPlay'
-import { use } from 'react'
 
 function MusicPage() {
   const [currentTrackId, setCurrentTrackId] = useState(null)
@@ -73,7 +72,6 @@ function MusicPage() {
     setBackendPlayback,
     refreshPageData,
     fetchBackendPlaybackState,
-    fetchCurrentShow,
     updateRefreshMessage,
     playStateRef,
   } = useMusicPageData({
@@ -118,25 +116,25 @@ function MusicPage() {
     [tracks, currentTrackId],
   )
 
-  const clearCurrentProgramInfo = async () => {
+  const clearCurrentProgramInfo = useCallback(async () => {
     try {
-      if(currentProgramName !== '暂无节目' || currentPerformerName !== '暂无演出人员') {
+      if (currentProgramName !== '暂无节目' || currentPerformerName !== '暂无演出人员') {
         // Call backend to clear current program and performer in the current show JSON
         // Assuming an API method like clearCurrentProgramInfo or updateCurrentShow exists
-        await musicPageApi.updateCurrentProgram({ programName: null, performerName: null,clearCurrentProgram: true });
-        
+        await musicPageApi.updateCurrentProgram({ programName: null, performerName: null, clearCurrentProgram: true })
+
         setCurrentProgramName('暂无节目')
         setCurrentPerformerName('暂无演出人员')
       }
     } catch (error) {
-      setMessage(`清除当前节目信息失败：${error.message}`);
+      setMessage(`清除当前节目信息失败：${error.message}`)
       // Fallback to local update if needed, or keep old values? 
       // For now, we update locally even on error to match UI expectation, 
       // but ideally, we might revert.
       setCurrentProgramName('暂无节目')
       setCurrentPerformerName('暂无演出人员')
     }
-  }
+  }, [currentPerformerName, currentProgramName, musicPageApi, setCurrentPerformerName, setCurrentProgramName])
 
   useEffect(() => {
     const backendSavedName = String(backendPlayback.currentTrack?.savedName || '').trim()
@@ -153,7 +151,7 @@ function MusicPage() {
     if (matchedTrack) {
       setCurrentTrackId(matchedTrack.id)
     }
-  }, [backendPlayback, tracks, playStateRef]) // Removed setters from dependency to avoid loops, handled inside function
+  }, [backendPlayback, clearCurrentProgramInfo, tracks, playStateRef]) // Removed setters from dependency to avoid loops, handled inside function
 
   const playbackProgress = backendPlayback.progress || {}
   const playbackPositionLabel = formatProgressTime(playbackProgress.positionSec)
@@ -294,7 +292,6 @@ function MusicPage() {
     switchToHistoryShow,
     deleteHistoryShow,
     triggerLocalEffect,
-    onPlay,
     controlBackendPlayback,
     setBackendVolume,
     toggleTrackPlayback,

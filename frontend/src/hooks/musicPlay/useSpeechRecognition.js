@@ -52,20 +52,32 @@ export function useSpeechRecognition({
     refineSpeechText,
     onMessage,
   })
+  const initialSpeechSupported = Boolean(getSpeechRecognitionCtor())
   const [listeningField, setListeningField] = useState('')
-  const [speechSupported, setSpeechSupported] = useState(true)
-  const [speechSupportHint, setSpeechSupportHint] = useState('')
+  const [speechSupported] = useState(initialSpeechSupported)
+  const [speechSupportHint] = useState(buildSpeechSupportHint(initialSpeechSupported))
 
-  latestOptionsRef.current = {
-    speechInputMode,
-    speechLanguage,
-    offlineFallbackEnabled,
+  useEffect(() => {
+    latestOptionsRef.current = {
+      speechInputMode,
+      speechLanguage,
+      offlineFallbackEnabled,
+      aiTextOptimizeEnabled,
+      getFieldValue,
+      setFieldValue,
+      refineSpeechText,
+      onMessage,
+    }
+  }, [
     aiTextOptimizeEnabled,
     getFieldValue,
-    setFieldValue,
-    refineSpeechText,
+    offlineFallbackEnabled,
     onMessage,
-  }
+    refineSpeechText,
+    setFieldValue,
+    speechInputMode,
+    speechLanguage,
+  ])
 
   const stopRecognition = () => {
     if (recognitionRef.current) {
@@ -82,13 +94,6 @@ export function useSpeechRecognition({
   }
 
   useEffect(() => stopRecognition, [])
-
-  useEffect(() => {
-    const SpeechRecognition = getSpeechRecognitionCtor()
-    const supported = Boolean(SpeechRecognition)
-    setSpeechSupported(supported)
-    setSpeechSupportHint(buildSpeechSupportHint(supported))
-  }, [])
 
   const flushSpeechDisplay = (field, interimText = '') => {
     const merged = joinSpeechText(speechBaseTextRef.current, speechFinalTextRef.current, interimText)

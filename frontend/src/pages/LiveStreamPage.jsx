@@ -729,7 +729,6 @@ function LiveStreamPage() {
           <div className="live-stream-page-video-card">
           <video
             ref={localVideoRef}
-            autoPlay
             muted
             playsInline
             className="live-stream-page-video"

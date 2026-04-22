@@ -171,7 +171,6 @@ const openApiSpec = {
             properties: {
               theme: { type: 'string', example: 'light' },
               fontScale: { type: 'integer', example: 100 },
-              autoPlay: { type: 'boolean', example: true },
               marqueeSpeed: { type: 'integer', example: 16 }
             }
           },

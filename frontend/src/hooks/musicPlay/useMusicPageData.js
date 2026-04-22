@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { getRefreshMessage, isAudioFileName, mergeRuntimeSettings } from '../../services/musicPlay'
+import { getRefreshMessage, mergeRuntimeSettings } from '../../services/musicPlay'
 
 export function useMusicPageData({ musicPageApi, isPlaylistLocked, onPlaylistLockChange, onMessage }) {
   const initialLoadRef = useRef(false)
@@ -15,7 +15,6 @@ export function useMusicPageData({ musicPageApi, isPlaylistLocked, onPlaylistLoc
   const [offlineFallbackEnabled, setOfflineFallbackEnabled] = useState(true)
   const [aiTextOptimizeEnabled, setAiTextOptimizeEnabled] = useState(true)
   const [showModelHintEnabled, setShowModelHintEnabled] = useState(true)
-  const [autoPlayEnabled, setAutoPlayEnabled] = useState(true)
   const [marqueeSpeedSec, setMarqueeSpeedSec] = useState(16)
   const [fontScalePercent, setFontScalePercent] = useState(100)
   const [hasCurrentShow, setHasCurrentShow] = useState(false)
@@ -98,7 +97,6 @@ export function useMusicPageData({ musicPageApi, isPlaylistLocked, onPlaylistLoc
       setOfflineFallbackEnabled(Boolean(settings.speech.offlineFallback))
       setAiTextOptimizeEnabled(Boolean(settings.ai.enabled))
       setShowModelHintEnabled(Boolean(settings.ai.showModelHint))
-      setAutoPlayEnabled(Boolean(settings.preferences.autoPlay))
       setMarqueeSpeedSec(Math.max(6, Math.min(40, Number(settings.preferences.marqueeSpeed || 16))))
       setFontScalePercent(Math.max(80, Math.min(140, Number(settings.preferences.fontScale || 100))))
     } catch {
@@ -223,7 +221,6 @@ export function useMusicPageData({ musicPageApi, isPlaylistLocked, onPlaylistLoc
     setAiTextOptimizeEnabled,
     showModelHintEnabled,
     setShowModelHintEnabled,
-    autoPlayEnabled,
     marqueeSpeedSec,
     setMarqueeSpeedSec,
     fontScalePercent,

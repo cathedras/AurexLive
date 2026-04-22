@@ -13,7 +13,6 @@ const defaultSettings = {
   preferences: {
     theme: 'light',
     fontScale: 100,
-    autoPlay: true,
     marqueeSpeed: 16,
   },
   speech: {
@@ -110,7 +109,6 @@ function SettingsPage() {
           <label className="settings-label">跑马灯速度(秒)
             <input className="settings-input" type="number" min="6" max="40" value={settings.preferences.marqueeSpeed} onChange={(e) => updateSection('preferences', 'marqueeSpeed', Number(e.target.value || 16))} />
           </label>
-          <label className="settings-check"><input type="checkbox" checked={settings.preferences.autoPlay} onChange={(e) => updateSection('preferences', 'autoPlay', e.target.checked)} />自动播放</label>
         </div>
       </div>
 
@@ -146,14 +144,17 @@ function SettingsPage() {
 }
 
 function mergeSettings(input = {}) {
+  const preferencesInput = input.preferences || {}
+
   return {
     profile: {
       ...defaultSettings.profile,
       ...(input.profile || {}),
     },
     preferences: {
-      ...defaultSettings.preferences,
-      ...(input.preferences || {}),
+      theme: preferencesInput.theme || defaultSettings.preferences.theme,
+      fontScale: Number(preferencesInput.fontScale || defaultSettings.preferences.fontScale),
+      marqueeSpeed: Number(preferencesInput.marqueeSpeed || defaultSettings.preferences.marqueeSpeed),
     },
     speech: {
       ...defaultSettings.speech,
