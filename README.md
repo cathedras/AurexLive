@@ -1,79 +1,78 @@
 # 演出中台
 
-一个基于 `Express + React(Vite)` 的演出管理与播控小系统，支持文件上传、节目单维护、主持人口播词生成、当前演出展示与 PDF 导出。
-# 演出中台
+一个基于 Express + React(Vite) 的演出管理与播控小系统，覆盖文件上传、节目单维护、当前演出展示、录音控制、WebSocket 实时通信与 PDF 导出。
 
-一个基于 `Express + React(Vite)` 的演出管理与播控小系统，支持文件上传、节目单维护、主持人口播词生成、当前演出展示与 PDF 导出。
+## 项目能力
 
-## 系统音频输出与录制映射（跨平台）
-
-本项目的录音实现位于 [backend/services/recordingService.js](backend/services/recordingService.js)，当前能力是“枚举录音输入设备”和“使用 ffmpeg 录制指定输入”，不是直接修改操作系统默认输出设备。若要实现“自动切换系统输出”，需要后端调用各平台自己的系统命令或工具。
-
-### 能力边界
-
-- ffmpeg：负责录制、转码、监测音量，不负责切换系统默认输出。
-- 系统输出切换：必须依赖 macOS / Windows / Linux 各自的命令行工具或音频服务。
-- 前端：只能发起切换请求，不能直接改系统音频路由。
-
-### 平台映射方案
-
-| 平台 | 列出输出设备 | 切换默认输出 | 常见录制对象 |
-| --- | --- | --- | --- |
-| macOS | `SwitchAudioSource -a` | `SwitchAudioSource -t output -s <name>` | BlackHole、Loopback、内建输出、麦克风输入 |
-| Windows | `SoundVolumeView` / `NirCmd` | `SoundVolumeView` / `NirCmd` | VB-Cable、Voicemeeter、Stereo Mix、虚拟声卡输入 |
-| Linux | `pactl list short sinks` / `wpctl status` | `pactl set-default-sink <sink>` / `wpctl set-default <id>` | `sink.monitor`、PulseAudio / PipeWire 虚拟输出 |
-
-### 推荐落地方案
-
-1. 后端新增“输出设备列表”接口，返回当前平台可用的 output/sink 列表。
-2. 后端新增“切换默认输出”接口，参数为目标设备名或 id。
-3. 前端在录音页增加“输出设备”选择框和“自动切换”开关。
-4. 开关开启时，先切换系统输出，再启动录音；停止录音后按需恢复原输出。
-
-### 平台建议
-
-- macOS：优先使用 BlackHole 2ch 或 Loopback，再用 SwitchAudioSource 做输出切换。
-- Windows：优先使用 SoundVolumeView 或 NirCmd，再配合 VB-Audio Virtual Cable / Voicemeeter。
-- Linux：优先使用 PulseAudio / PipeWire，再用 pactl 或 wpctl 管理默认输出。
-
-### 录音输入设备枚举
-
-当前项目已有录音输入设备枚举接口，位于 [backend/routes/recordingRoutes.js](backend/routes/recordingRoutes.js#L132)。前端录音页位于 [frontend/src/pages/RecordingPage.jsx](frontend/src/pages/RecordingPage.jsx)，后续可以在这里扩展输出设备选择和自动切换。
-
-## 功能概览
-- 文件上传与列表查看（支持音频文件）
-- 音乐播放页节目单管理
-  - 新增节目
-  - 修改节目
-  - 删除节目
+- 文件上传与文件列表查看
+- 音乐节目单管理
+  - 新增、编辑、删除节目
   - 拖拽排序
-- 主持人口播词
-  - 手动编辑
-  - 调用 AI 接口生成候选示例并选择
-- 演出管理
-  - 保存演出（`.json`）
-  - 设为当前演出
-  - 首页展示当前演出跑马灯
-- 首页展示
-  - 当前表演节目
-  - 视频直播占位窗口（前端占位图）
-- 节目单导出
-  - 一键导出 PDF
-  - 打印节目单
+  - 当前节目与当前演出联动显示
+  - 节目单 PDF 导出
+- 播控与实时状态
+  - 当前演出状态保存与切换
+  - 首页展示当前节目、当前演出与直播入口
+  - 实时播控状态、效果触发、后端播放控制
+- 录音与设备管理
+  - 录音输入设备枚举
+  - 录音输出设备枚举
+  - 切换默认输出设备
+  - 后端录音启动/停止
+  - 录音列表与录音文件访问
+- AI 辅助
+  - 主持人口播词候选生成
+  - 文本润色/修正接口
+- 直播与移动端
+  - 直播预览页
+  - 直播推流页
+  - 手机摄像头与手机控制页
+  - WebRTC 相关接口
+- 运维与诊断
+  - 前端错误上报
+  - Swagger 接口文档
+  - PM2 进程管理
 
-## 项目结构
+## 功能规划
+
+- 多媒体在线直播平台推送
+- 微信文件上传读取
+- 优化音视频播放码率（预听、存储、在线）
+- AI 接口调用
+- 专业音频调音工具（未来规划）
+
+## 技术栈
+
+- 后端：Node.js、Express、WebSocket、ffmpeg、pdfkit、multer、swagger-ui-express
+- 前端：React 19、Vite、React Router、Axios、mediasoup-client
+- 运行目录：`uploads/`、`recordings/`、`runtime/`、`show_record/`
+
+## 目录结构
 
 ```text
-backend/                 # Node/Express 后端
-runtime/  # 运行时 JSON 配置
-frontend/                # React 前端（Vite）
-show_record/             # 历史演出记录 JSON
-uploads/                 # 上传文件目录
-README.md                # 项目说明
+backend/      # Express 后端、路由、服务、中间件、OpenAPI
+frontend/     # React + Vite 前端
+runtime/      # 运行时 JSON 配置
+recordings/   # 录音文件
+show_record/  # 历史演出记录 JSON
+uploads/      # 上传文件目录
+certs/        # 本地 HTTPS 证书
 ```
 
+## 页面路由
 
-### 1) 安装依赖
+前端页面通过 `/page` 开头的路由访问：
+
+- `/page` 首页
+- `/page/upload` 文件上传页
+- `/page/music` 节目单与播控页
+- `/page/recording` 录音页
+- `/page/live-stream` 直播推流页
+- `/page/live-preview` 直播预览页
+- `/page/settings` 设置页
+- `/page/ws-demo` WebSocket 演示页
+
+## 安装依赖
 
 在项目根目录执行：
 
@@ -82,122 +81,122 @@ npm install
 npm --prefix frontend install
 ```
 
-### 2) 开发模式启动
+## 本地开发
+
+一键启动后端、前端和监控进程：
 
 ```bash
 npm run dev
 ```
 
-默认：
+该命令等价于同时运行：
+
+- `npm run server:dev`：后端热重载
+- `node backend/monitorWorker.js`：监控进程
+- `npm run client`：前端 Vite 开发服务
+
+默认访问地址：
 
 - 后端：`http://localhost:3000`
-- 前端：Vite 开发服务（通常 `http://localhost:5173`）
+- 前端开发服务：通常是 `http://localhost:5173`
 - 接口文档：`http://localhost:3000/docs`
 
-### 3) 生产构建（前端）
+## 常用脚本
 
 ```bash
-npm run build
+npm run server        # 只启动后端
+npm run server:dev    # 后端开发模式（watch）
+npm run client        # 只启动前端 Vite
+npm run build         # 构建前端生产包
+npm test              # 运行后端测试
+npm run pm2:start     # 使用 ecosystem.config.js 启动 PM2
+npm run pm2:stop      # 停止 PM2
+npm run pm2:restart   # 重启 PM2
+npm run pm2:logs      # 查看 PM2 日志
 ```
-
-## 可选环境变量（AI 口播词）
-
-未配置时将自动使用内置示例模板。
-
-- `AI_API_KEY` 或 `OPENAI_API_KEY`
-- `AI_API_BASE_URL` 或 `OPENAI_BASE_URL`（默认 `https://api.openai.com/v1`）
-- `AI_API_MODEL` 或 `OPENAI_MODEL`（默认 `gpt-4o-mini`）
-
-## 常用接口（摘要）
-
-- `POST /upload` 上传文件
-- `GET /files` 已上传文件列表
-- `GET /musiclist` 获取当前节目单
-- `POST /musiclist/save` 保存节目单/演出
-- `POST /musiclist/export-pdf` 导出节目单 PDF
-- `GET /show/current` 获取当前演出
-- `GET /shows` 获取已保存演出列表
-- `POST /show/current` 切换当前演出
-- `POST /ai/host-script-suggestions` 生成主持人口播词候选
 
 ## 接口预览
 
-项目已接入 Swagger UI，可在服务启动后访问：
+项目已接入 Swagger UI：
 
-```bash
-http://localhost:3000/docs
-```
+- 文档页：`http://localhost:3000/docs`
+- OpenAPI JSON：`http://localhost:3000/docs/openapi.json`
 
-原始 OpenAPI JSON：
+文档覆盖的核心接口前缀包括：
 
-```bash
-http://localhost:3000/docs/openapi.json
-```
+- `/v1/upload`
+- `/v1/files`
+- `/v1/music/*`
+- `/v1/recording/*`
+- `/v1/show/*`
+- `/v1/shows`
+- `/v1/ai/*`
+- `/v1/settings`
+- `/v1/live/*`
+- `/v1/mobile/*`
+- `/v1/client-error`
+- `/v1/webrtc`
 
-文档页支持：
+其中录音相关接口包含输入/输出设备枚举、输出设备切换、录音启动/停止、录音列表和录音转换；AI 接口包含主持人口播词候选生成与文本修正。
 
-- 在线查看所有后端接口
-- 查看请求参数、响应结构和示例
-- 直接在页面中发起接口测试
+## 环境变量
 
-## 数据文件说明
+### 后端
 
-- `runtime/musiclist.json`：当前节目单（播放页读取）
+后端启动时会优先加载根目录下的环境文件：
+
+- 开发环境：`.env.dev`
+- 生产环境：`.env.prd`
+- 也可以通过 `ENV_FILE` 指定自定义文件名
+
+常用变量：
+
+- `PORT`：后端端口，默认 `3000`
+- `NODE_ENV`：运行环境
+- `USE_HTTPS`：强制启用 HTTPS / WSS
+- `SSL_KEY_PATH`：HTTPS 私钥路径
+- `SSL_CERT_PATH`：HTTPS 证书路径
+- `SWAGGER_AUTO_EXPOSE`：控制是否自动暴露 Swagger 文档
+- `FRONTEND_DEV_SERVER_URL`：开发环境前端地址
+- `USE_VITE_DEV_SERVER`：是否在开发环境跳转到 Vite 开发服务器
+- `AI_API_KEY` 或 `OPENAI_API_KEY`
+- `AI_API_BASE_URL` 或 `OPENAI_BASE_URL`
+- `AI_API_MODEL` 或 `OPENAI_MODEL`
+
+### 前端
+
+- `VITE_API_BASE_URL`：API 基础地址，默认可按项目约定使用 `/v1`
+- `VITE_API_PORT`：WebSocket 地址推导使用的后端端口，默认 `3000`
+
+前端的 WebSocket 连接会在 HTTPS 场景下自动使用 `wss`。
+
+## 数据文件
+
+- `runtime/musiclist.json`：当前节目单
 - `runtime/current_show.json`：当前演出状态
 - `runtime/user_settings.json`：用户设置
 - `runtime/live_state.json`：实时播控状态
-- `show_record/*.json`：按演出名称保存的历史节目单
+- `recordings/`：录音输出文件
+- `show_record/*.json`：历史演出记录
 
-## 说明
+## 录音与系统音频
 
-- PDF 导出使用后端 `pdfkit` 生成。
-- 首页视频直播窗口目前为占位图，暂未接入真实流媒体功能。
+录音与系统输出切换的实现主要在 [backend/routes/recordingRoutes.js](backend/routes/recordingRoutes.js) 和 [backend/services/recordingService.js](backend/services/recordingService.js)。当前项目支持录音输入设备枚举、输出设备枚举、切换默认输出设备，以及基于 ffmpeg 的录音与转码。
 
-## 部署建议（PM2 + Nginx）
+在 macOS 上，如果你要录系统声音，通常需要配合 BlackHole 2ch 或 Loopback 这类虚拟声卡使用；同时如果要在录制时保持外放，可以使用系统的多输出设备进行组合。
 
-以下为常见 Linux 服务器部署思路（示例）：
+## 部署建议
 
-### 1) 服务器准备
-
-- 安装 Node.js（建议 LTS）
-- 安装 PM2：
+### PM2
 
 ```bash
-npm install -g pm2
-```
-
-### 2) 拉取代码并安装依赖
-
-```bash
-git clone <your-repo-url> FileTransfer
-cd FileTransfer
 npm install
 npm --prefix frontend install
 npm run build
+npm run pm2:start
 ```
 
-### 3) 环境变量
-
-按需设置（可写入 shell profile 或 PM2 ecosystem 文件）：
-
-```bash
-export NODE_ENV=production
-export AI_API_KEY=your_key
-export AI_API_BASE_URL=https://api.openai.com/v1
-export AI_API_MODEL=gpt-4o-mini
-```
-
-### 4) 使用 PM2 启动
-
-```bash
-pm2 start ecosystem.config.js --env production
-pm2 save
-pm2 startup
-```
-
-默认后端端口为 `3000`。
-
-### 5) Nginx 反向代理（示例）
+### Nginx 反向代理
 
 ```nginx
 server {
@@ -217,78 +216,11 @@ server {
 }
 ```
 
-配置后执行：
+如果需要 HTTPS，请同时配置 `USE_HTTPS=1` 和对应证书路径，或者通过 Nginx 在外层终止 TLS。
 
-```bash
-sudo nginx -t
-sudo systemctl reload nginx
-```
+## 说明
 
-### 6) 常用运维命令
-
-```bash
-pm2 status
-pm2 logs show-console
-pm2 restart ecosystem.config.js --env production
-pm2 restart show-console
-pm2 stop show-console
-```
-
-## 首次上线检查清单
-
-- 代码与依赖
-  - 已执行 `npm install` 与 `npm --prefix frontend install`
-  - 已执行 `npm run build`，且 `frontend/dist` 已生成
-- 环境变量
-  - `NODE_ENV=production`
-  - AI 相关变量按需配置（未配置可使用内置模板）
-- 进程与端口
-  - `pm2 status` 显示 `show-console` 为 `online`
-  - 服务监听端口为 `3000`
-  - 云服务器安全组/防火墙已放行 `80/443`（以及需要的管理端口）
-- Nginx
-  - `sudo nginx -t` 校验通过
-  - `sudo systemctl reload nginx` 成功
-  - 域名可访问首页，接口请求正常转发
-- PM2 自启
-  - 已执行 `pm2 save`
-  - 已执行 `pm2 startup` 并按提示完成系统命令
-  - 服务器重启后服务可自动拉起
-- 功能验收
-  - 上传文件与列表展示正常
-  - 保存演出并设为当前演出正常
-  - 首页跑马灯显示当前演出与当前节目
-  - PDF 导出可下载并正常打开
-
-## 本地环境文件说明（dev / prd）
-
-为便于本地开发与部署，本仓库提供简单的环境文件支持：
-
-- 根目录（后端）：
-  - `.env.dev` — 开发环境变量（默认加载）
-  - `.env.prd` — 生产环境变量（当 `NODE_ENV=production` 时默认加载）
-
-  后端在启动时会尝试载入根目录下的 `.env.dev` / `.env.prd`（也可通过 `ENV_FILE` 指定自定义文件名）。该加载使用 `dotenv`，请在需要时安装：
-
-  ```bash
-  npm install dotenv --save
-  ```
-
-- 前端（Vite）：
-  - `frontend/.env.development` — Vite 开发时使用
-  - `frontend/.env.production` — Vite 打包/预览时使用
-
-  主要变量：
-  - `VITE_API_BASE_URL` — API 基础路径（开发时示例：`http://localhost:3000/v1`）
-  - `VITE_API_PORT` — 用于前端在多个候选 ws 地址尝试时的后端端口（默认 `3000`）
-
-使用示例：
-
-```bash
-# 开发（默认会加载 .env.dev）
-npm run dev
-
-# 本地以 production 模式启动后端（会尝试加载 .env.prd）
-NODE_ENV=production ENV_FILE=.env.prd npm run server
-```
+- 首页和节目单页面会读取当前演出与当前节目状态。
+- PDF 导出由后端生成。
+- 代码中已预留移动端控制、直播与 WebRTC 相关页面和接口。
 
