@@ -84,7 +84,7 @@ export function useMusicPageData({ musicPageApi, isPlaylistLocked, onPlaylistLoc
     } catch {
       setHistoryShows([])
     }
-  }, [musicPageApi])
+  }, [musicPageApi, t])
 
   const fetchUserSettings = useCallback(async () => {
     try {
@@ -136,7 +136,7 @@ export function useMusicPageData({ musicPageApi, isPlaylistLocked, onPlaylistLoc
       setCurrentProgramName(t('No track yet', '暂无节目'))
       setCurrentPerformerName(t('No performer yet', '暂无演出人员'))
     }
-  }, [musicPageApi, onPlaylistLockChange])
+  }, [musicPageApi, onPlaylistLockChange, t])
 
   const fetchTracks = useCallback(async () => {
     try {
@@ -170,7 +170,7 @@ export function useMusicPageData({ musicPageApi, isPlaylistLocked, onPlaylistLoc
       messageRef.current(t(`Failed to load music list: ${error.message}`, `加载音乐列表失败：${error.message}`))
       return { tracks: [], temporaryTracks: [], error }
     }
-  }, [musicPageApi])
+  }, [musicPageApi, t])
 
   const refreshPageData = useCallback(async () => {
     if (refreshPromiseRef.current) {

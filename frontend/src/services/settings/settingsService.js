@@ -1,9 +1,10 @@
 import { apiGet, apiPost } from '../apiClientUtil'
+import { API_ENDPOINTS } from '../webApiConfig'
 
 export async function fetchSettings() {
-  return await apiGet('/v1/settings')
+  return await apiGet(API_ENDPOINTS.settings.user)
 }
 
 export async function saveSettings(settings) {
-  return await apiPost('/v1/settings', { settings })
+  return await apiPost(API_ENDPOINTS.settings.user, { settings })
 }

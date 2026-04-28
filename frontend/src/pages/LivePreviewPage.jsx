@@ -7,9 +7,10 @@ import {
   consumeLiveTrack,
   createLiveTransport,
   fetchLiveRtpCapabilities,
+  fetchLiveSession,
+  fetchLiveSessionProducers,
   resumeLiveConsumer,
 } from '../services/liveStream/liveStreamService'
-import { apiGet } from '../services/apiClientUtil'
 import { connect as connectWs, sendJsonAsText } from '../services/wsClientService'
 
 function LivePreviewPage() {
@@ -37,6 +38,8 @@ function LivePreviewPage() {
     srcObjectTracks: [],
   })
   const monitorLogSeqRef = useRef(0)
+  const displayStatus = sessionId ? status : '缺少 sessionId'
+  const displayMonitorStatus = sessionId ? monitorStatus : '缺少 sessionId'
 
   const appendMonitorLog = useCallback((message, data = null) => {
     const details = (() => {
@@ -134,7 +137,6 @@ function LivePreviewPage() {
 
   useEffect(() => {
     if (!sessionId) {
-      setStatus('缺少 sessionId')
       return undefined
     }
 
@@ -314,13 +316,13 @@ function LivePreviewPage() {
       setErrorMessage('')
 
       try {
-        const sessionResult = await apiGet(`/v1/webrtc/sessions/${sessionId}`)
+        const sessionResult = await fetchLiveSession(sessionId)
         if (!sessionResult?.success) {
           setStatus('等待主播开播')
           return
         }
 
-        const producersResult = await apiGet(`/v1/webrtc/sessions/${sessionId}/producers`)
+        const producersResult = await fetchLiveSessionProducers(sessionId)
         if (!producersResult?.success) {
           throw new Error(producersResult?.message || '获取 producer 失败')
         }
@@ -387,7 +389,6 @@ function LivePreviewPage() {
 
   useEffect(() => {
     if (!sessionId) {
-      setMonitorStatus('缺少 sessionId')
       return undefined
     }
 
@@ -532,9 +533,9 @@ function LivePreviewPage() {
 
           <div className="live-preview-page-panel">
             <div className="live-preview-page-field"><strong>会话 ID</strong><div className="live-preview-page-break">{sessionId || '未提供'}</div></div>
-            <div className="live-preview-page-field"><strong>状态</strong><div>{status}</div></div>
+            <div className="live-preview-page-field"><strong>状态</strong><div>{displayStatus}</div></div>
             {errorMessage ? <div className="live-preview-page-field live-preview-page-error"><strong>错误</strong><div>{errorMessage}</div></div> : null}
-            <div className="live-preview-page-field"><strong>WebSocket 监控</strong><div>{monitorStatus}</div></div>
+            <div className="live-preview-page-field"><strong>WebSocket 监控</strong><div>{displayMonitorStatus}</div></div>
 
             <div className="live-preview-page-producers">
               <strong>当前 Producer</strong>

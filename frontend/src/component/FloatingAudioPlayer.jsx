@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 
+import { FloatingAudioPlayerContext } from '../context/floatingAudioPlayerContext'
 import { useLanguage } from '../context/languageContext'
-import { FloatingAudioPlayerContext } from './FloatingAudioPlayerContext'
+import { createBackendProgressStream } from '../services/stream/streamService'
 
 function formatProgressTime(seconds) {
   const safeSeconds = Math.max(0, Math.floor(Number(seconds || 0)))
@@ -183,7 +184,10 @@ export function FloatingAudioPlayerProvider({ children }) {
       return undefined
     }
 
-    const eventSource = new window.EventSource('/v1/music/backend-progress/stream')
+    const eventSource = createBackendProgressStream()
+    if (!eventSource) {
+      return undefined
+    }
 
     eventSource.onmessage = (event) => {
       try {

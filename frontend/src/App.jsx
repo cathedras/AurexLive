@@ -3,7 +3,6 @@ import './App.css'
 import { FloatingAudioPlayerProvider } from './component/FloatingAudioPlayer'
 import LanguageSwitcher from './component/LanguageSwitcher'
 import { LanguageProvider } from './context/languageContext'
-import { MusicPageApiProvider } from './context/musicPageApiContext'
 import HomePage from './pages/HomePage'
 import MobileControlPage from './pages/MobileControlPage'
 import LiveStreamPage from './pages/LiveStreamPage'
@@ -32,14 +31,7 @@ function App() {
             <Route path="/page/error/500" element={<SystemNoticePage variant="serverError" />} />
             <Route path="/page/build-missing" element={<SystemNoticePage variant="buildMissing" />} />
             <Route path="/page/upload" element={<UploadPage />} />
-            <Route
-              path="/page/music"
-              element={(
-                <MusicPageApiProvider>
-                  <MusicPage />
-                </MusicPageApiProvider>
-              )}
-            />
+            <Route path="/page/music" element={<MusicPage />} />
             <Route path="/page/recording" element={<RecordingPage />} />
             <Route path="/page/ws-demo" element={<WsDemo />} />
             <Route path="/page/settings" element={<SettingsPage />} />

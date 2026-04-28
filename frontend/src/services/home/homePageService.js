@@ -1,17 +1,18 @@
 import { apiGet } from '../apiClientUtil'
+import { API_ENDPOINTS } from '../webApiConfig'
 
 export async function fetchMobileLinks() {
-  return await apiGet('/v1/mobile/links')
+  return await apiGet(API_ENDPOINTS.mobile.links)
 }
 
 export async function fetchUserSettings() {
-  return await apiGet('/v1/settings')
+  return await apiGet(API_ENDPOINTS.settings.user)
 }
 
 export async function fetchCurrentShowState() {
-  return await apiGet('/v1/music/show/current-state')
+  return await apiGet(API_ENDPOINTS.music.showCurrentState)
 }
 
 export async function fetchWebRtcSessions() {
-  return await apiGet('/v1/webrtc/sessions')
+  return await apiGet(API_ENDPOINTS.webrtc.sessions)
 }

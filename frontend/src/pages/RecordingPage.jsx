@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import * as Tooltip from '@radix-ui/react-tooltip'
 
-import { useFloatingAudioPlayer } from '../component/FloatingAudioPlayerContext'
+import { useFloatingAudioPlayer } from '../context/floatingAudioPlayerContext'
 import { useLanguage } from '../context/languageContext'
 import Modal from '../component/Modal'
 import { deleteRecording, getRecordingList, startLiveMicPlayback, startRecordingBackend, stopLiveMicPlayback, stopRecordingBackend, switchOutputDevice, recordingUse } from '../services/musicPlay'
@@ -82,6 +82,10 @@ const buildAutoRecordingFileName = () => {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
   return `auto-recording-${timestamp}.flac`
 }
+
+const getCurrentTimestamp = () => Date.now()
+
+const buildExternalAutoMonitorKey = () => `external-auto-${getCurrentTimestamp()}`
 
 const findVirtualDevice = (items) => {
   if (!Array.isArray(items) || items.length === 0) {
@@ -278,7 +282,7 @@ const RecordingPage = () => {
 
   const handleAutoRecordVolume = (volumeValue) => {
     const volume = Math.max(0, Math.min(100, Number(volumeValue) || 0));
-    const now = Date.now();
+    const now = getCurrentTimestamp();
     if (enableAutoRecordRef.current && externalAudioFlowRef.current === 'monitoring' && !isRecordingRef.current) {
       if (volume > AUTO_RECORD_START_THRESHOLD) {
         if (!externalAutoMonitorSinceRef.current) {
@@ -453,13 +457,18 @@ const RecordingPage = () => {
 
   // 初始化录音状态
   useEffect(() => {
-    loadRecordings();
+    let cancelled = false;
 
-    // fetch available input/output devices from backend for platform-appropriate selection
-    (async () => {
+    const loadInitialState = async () => {
+      await loadRecordings();
+
+      // fetch available input/output devices from backend for platform-appropriate selection
       try {
         const musicPlay = await import('../services/musicPlay');
         const devRes = await musicPlay.listInputDevices();
+        if (cancelled) {
+          return;
+        }
         if (devRes && devRes.success) {
           const raw = devRes.raw || '';
           const plat = devRes.platform || '';
@@ -512,6 +521,9 @@ const RecordingPage = () => {
         }
 
         const outRes = await musicPlay.listOutputDevices();
+        if (cancelled) {
+          return;
+        }
         if (outRes && outRes.success) {
           let parsed = normalizeDeviceList(Array.isArray(outRes.devices) ? outRes.devices : [], t);
 
@@ -531,10 +543,13 @@ const RecordingPage = () => {
       } catch (e) {
         // ignore device listing errors
       }
-    })();
+    };
+
+    void loadInitialState();
     // no-op: WebSocket will be connected when user clicks Start
 
     return () => {
+      cancelled = true;
       // close any open SSE/WebSocket stored in state
       try {
         if (ws && ws.close) ws.close();
@@ -544,7 +559,7 @@ const RecordingPage = () => {
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [isMacPlatform, loadRecordings, ws]);
+  }, [isMacPlatform, loadRecordings, t, ws]);
 
   useEffect(() => {
     if (!isRecording && !livePlaybackEnabled) {
@@ -591,7 +606,7 @@ const RecordingPage = () => {
         ctx.clearRect(0, 0, width, height);
 
         for (let i = 0; i < barCount; i += 1) {
-          const offset = Math.sin(Date.now() / 200 + i) * (barHeight / 4);
+          const offset = Math.sin(getCurrentTimestamp() / 200 + i) * (barHeight / 4);
           const currentHeight = Math.max(5, barHeight + offset);
           const hue = displayVolume > 70 ? 0 : displayVolume > 40 ? 30 : 120;
           ctx.fillStyle = `hsl(${hue}, 80%, 50%)`;
@@ -617,7 +632,7 @@ const RecordingPage = () => {
         animationRef.current = null;
       }
     };
-  }, [isRecording, livePlaybackEnabled]);
+  }, [isRecording, livePlaybackEnabled, t]);
 
   // 开始录音
   const startRecordingWithDevice = async (deviceArg, mode = 'normal', options = {}) => {
@@ -754,7 +769,7 @@ const RecordingPage = () => {
         };
 
         if (socket) {
-          const autoMonitorKey = `external-auto-${Date.now()}`;
+          const autoMonitorKey = buildExternalAutoMonitorKey();
           wsClientService.sendJsonAsText(socket, {
             type: 'subscribe-volume',
             data: { fileName: autoMonitorKey, device: virtualInput.value }

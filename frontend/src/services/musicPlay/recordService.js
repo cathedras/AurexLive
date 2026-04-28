@@ -1,12 +1,11 @@
 import { apiDelete, apiGet, apiPost } from '../apiClientUtil'
+import { API_ENDPOINTS } from '../webApiConfig'
 import wsClient from '../wsClientService.js'
-
-const BASE_URL = `${String(import.meta.env.VITE_API_BASE_URL || '/v1').replace(/\/$/, '')}/recording`
 
 export const getRecordingStatus = async (fileName) => {
   try {
     const params = fileName ? { fileName } : {}
-    return await apiGet(`${BASE_URL}/recording-status`, { params })
+    return await apiGet(API_ENDPOINTS.recording.recordingStatus, { params })
   } catch (error) {
     console.error('Failed to fetch recording status:', error)
     throw error
@@ -15,7 +14,7 @@ export const getRecordingStatus = async (fileName) => {
 
 export const getRecordingList = async () => {
   try {
-    return await apiGet(`${BASE_URL}/list-recordings`)
+    return await apiGet(API_ENDPOINTS.recording.listRecordings)
   } catch (error) {
     console.error('Failed to fetch recording list:', error)
     throw error
@@ -24,7 +23,7 @@ export const getRecordingList = async () => {
 
 export const listInputDevices = async () => {
   try {
-    return await apiGet(`${BASE_URL}/list-input-devices`)
+    return await apiGet(API_ENDPOINTS.recording.listInputDevices)
   } catch (error) {
     console.error('Failed to list input devices:', error)
     throw error
@@ -33,7 +32,7 @@ export const listInputDevices = async () => {
 
 export const listOutputDevices = async () => {
   try {
-    return await apiGet(`${BASE_URL}/list-output-devices`)
+    return await apiGet(API_ENDPOINTS.recording.listOutputDevices)
   } catch (error) {
     console.error('Failed to list output devices:', error)
     throw error
@@ -42,7 +41,7 @@ export const listOutputDevices = async () => {
 
 export const switchOutputDevice = async (device) => {
   try {
-    return await apiPost(`${BASE_URL}/switch-output-device`, { device })
+    return await apiPost(API_ENDPOINTS.recording.switchOutputDevice, { device })
   } catch (error) {
     console.error('Failed to switch output device:', error)
     throw error
@@ -53,7 +52,7 @@ export const listRecordingDevices = listInputDevices
 
 export const deleteRecording = async (filename) => {
   try {
-    return await apiDelete(`${BASE_URL}/${encodeURIComponent(filename)}`)
+    return await apiDelete(API_ENDPOINTS.recording.detail(filename))
   } catch (error) {
     console.error('Failed to delete recording:', error)
     throw error
@@ -62,7 +61,7 @@ export const deleteRecording = async (filename) => {
 
 export const startRecordingBackend = async ({ clientId, device, outFileName } = {}) => {
   try {
-    return await apiPost(`${BASE_URL}/start-recording-backend`, { clientId, device, outFileName })
+    return await apiPost(API_ENDPOINTS.recording.startBackend, { clientId, device, outFileName })
   } catch (error) {
     console.error('Failed to start backend recording:', error)
     throw error
@@ -71,7 +70,7 @@ export const startRecordingBackend = async ({ clientId, device, outFileName } = 
 
 export const stopRecordingBackend = async (fileName) => {
   try {
-    return await apiPost(`${BASE_URL}/stop-recording-backend`, { fileName })
+    return await apiPost(API_ENDPOINTS.recording.stopBackend, { fileName })
   } catch (error) {
     console.error('Failed to stop backend recording:', error)
     throw error
@@ -80,7 +79,7 @@ export const stopRecordingBackend = async (fileName) => {
 
 export const startLiveMicPlayback = async (device, outputDevice) => {
   try {
-    return await apiPost(`${BASE_URL}/start-live-mic-playback`, { device, outputDevice })
+    return await apiPost(API_ENDPOINTS.recording.startLiveMicPlayback, { device, outputDevice })
   } catch (error) {
     console.error('Failed to start live monitoring:', error)
     throw error
@@ -89,7 +88,7 @@ export const startLiveMicPlayback = async (device, outputDevice) => {
 
 export const stopLiveMicPlayback = async () => {
   try {
-    return await apiPost(`${BASE_URL}/stop-live-mic-playback`, {})
+    return await apiPost(API_ENDPOINTS.recording.stopLiveMicPlayback, {})
   } catch (error) {
     console.error('Failed to stop live monitoring:', error)
     throw error
@@ -98,7 +97,7 @@ export const stopLiveMicPlayback = async () => {
 
 export const recordingUse = async (filename, newName) => {
   try {
-    return await apiPost(`${BASE_URL}/use-recording`, { filename, newName })
+    return await apiPost(API_ENDPOINTS.recording.useRecording, { filename, newName })
   } catch (error) {
     console.error('Failed to use recording:', error)
     throw error

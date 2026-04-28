@@ -7,6 +7,7 @@ import {
   fetchBackendPlaybackState,
   updateBackendVolume,
 } from '../services/mobile/mobileControlService'
+import { createBackendProgressStream } from '../services/stream/streamService'
 
 import './MobileControlPage.css'
 
@@ -300,7 +301,12 @@ function MobileControlPage() {
           streamRef.current.close()
         }
 
-        const nextStream = new window.EventSource('/v1/music/backend-progress/stream')
+        const nextStream = createBackendProgressStream()
+        if (!nextStream) {
+          startPolling()
+          return
+        }
+
         streamRef.current = nextStream
         setSyncMode('live')
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { useLanguage } from '../context/languageContext'
@@ -34,11 +34,7 @@ function SettingsPage() {
   const [message, setMessage] = useState('')
   const [saving, setSaving] = useState(false)
 
-  useEffect(() => {
-    fetchSettings()
-  }, [])
-
-  const fetchSettings = async () => {
+  const fetchSettings = useCallback(async () => {
     try {
       const result = await loadSettings()
       if (!result.success) {
@@ -49,7 +45,25 @@ function SettingsPage() {
     } catch (error) {
       setMessage(t(`Failed to load settings: ${error.message}`, `加载设置失败：${error.message}`))
     }
-  }
+  }, [t])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadPageSettings = async () => {
+      if (cancelled) {
+        return
+      }
+
+      await fetchSettings()
+    }
+
+    loadPageSettings()
+
+    return () => {
+      cancelled = true
+    }
+  }, [fetchSettings])
 
   const updateSection = (section, key, value) => {
     setSettings((prev) => ({

@@ -87,7 +87,7 @@ function UploadPage() {
       setFiles([])
       showMessage(t(`Failed to load list: ${error.message}`, `列表加载失败：${error.message}`), 'error')
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     fetchFileList()

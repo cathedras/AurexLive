@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { createBackendProgressStream } from '../../services/stream/streamService'
 
 export function useBackendPlaybackStream({ backendPlayback, requestBackendPlaybackState, setBackendPlayback }) {
   useEffect(() => {
@@ -33,7 +34,10 @@ export function useBackendPlaybackStream({ backendPlayback, requestBackendPlayba
         return
       }
 
-      eventSource = new window.EventSource('/v1/music/backend-progress/stream')
+      eventSource = createBackendProgressStream()
+      if (!eventSource) {
+        return
+      }
 
       eventSource.onmessage = (event) => {
         try {

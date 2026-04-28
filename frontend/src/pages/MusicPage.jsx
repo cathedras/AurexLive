@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useFloatingAudioPlayer } from '../component/FloatingAudioPlayerContext'
+import { useFloatingAudioPlayer } from '../context/floatingAudioPlayerContext'
 import {
   DeleteTrackDialog,
   ExportPdfDialog,
@@ -12,10 +12,10 @@ import {
   SaveShowDialog,
   TrackEditorDialog,
 } from '../component/MusicPlay'
-import { useMusicPageApi } from '../context/musicPageApiContext'
 import {
   useBackendPlaybackStream,
   useMusicEditorState,
+  useMusicPageApi,
   useMusicPageData,
   useMusicPlaybackActions,
   useSpeechRecognition,
@@ -47,8 +47,9 @@ function MusicPage() {
   const [isPlaylistLocked, setIsPlaylistLocked] = useState(false)
   const [customEffectName, setCustomEffectName] = useState('')
   const audioCtxRef = useRef(null)
+  const hasSyncedProgramClearRef = useRef(false)
   const { openFloatingPlayer } = useFloatingAudioPlayer()
-  
+
   const musicPageApi = useMusicPageApi()
 
   const {
@@ -113,9 +114,33 @@ function MusicPage() {
     }
   }
 
+  const backendSavedName = useMemo(
+    () => String(backendPlayback.currentTrack?.savedName || '').trim(),
+    [backendPlayback.currentTrack?.savedName],
+  )
+
+  const backendPlaybackState = useMemo(
+    () => String(backendPlayback.state || '').trim(),
+    [backendPlayback.state],
+  )
+
+  const syncedCurrentTrackId = useMemo(() => {
+    if (!backendSavedName) {
+      return null
+    }
+
+    const matchedTrack = tracks.find((track) => String(track.savedName || '').trim() === backendSavedName)
+    return matchedTrack?.id || null
+  }, [backendSavedName, tracks])
+
+  const effectiveCurrentTrackId = syncedCurrentTrackId || (['idle', 'stopped'].includes(backendPlaybackState) ? null : currentTrackId)
+  const shouldShowClearedProgramInfo = !backendSavedName && ['idle', 'stopped'].includes(backendPlaybackState)
+  const displayCurrentProgramName = shouldShowClearedProgramInfo ? t('No track yet', '暂无节目') : currentProgramName
+  const displayCurrentPerformerName = shouldShowClearedProgramInfo ? t('No performer yet', '暂无演出人员') : currentPerformerName
+
   const currentTrack = useMemo(
-    () => tracks.find((track) => track.id === currentTrackId) || null,
-    [tracks, currentTrackId],
+    () => tracks.find((track) => track.id === effectiveCurrentTrackId) || null,
+    [effectiveCurrentTrackId, tracks],
   )
 
   const clearCurrentProgramInfo = useCallback(async () => {
@@ -138,28 +163,30 @@ function MusicPage() {
     }
   }, [currentPerformerName, currentProgramName, musicPageApi, setCurrentPerformerName, setCurrentProgramName, t])
 
+  const syncClearedCurrentProgramInfo = useCallback(async () => {
+    try {
+      await musicPageApi.updateCurrentProgram({ programName: null, performerName: null, clearCurrentProgram: true })
+    } catch {
+      // ignore sync failures here; UI already derives the cleared state locally
+    }
+  }, [musicPageApi])
+
   useEffect(() => {
-    const backendSavedName = String(backendPlayback.currentTrack?.savedName || '').trim()
-    if (!backendSavedName) {
-      if (['idle', 'stopped'].includes(String(backendPlayback.state || '').trim())) {
-        setCurrentTrackId(null)
-        // Clear performer and program name when playback finishes, and sync to backend
-        clearCurrentProgramInfo()
+    if (shouldShowClearedProgramInfo) {
+      if (!hasSyncedProgramClearRef.current) {
+        hasSyncedProgramClearRef.current = true
+        syncClearedCurrentProgramInfo()
       }
       return
     }
 
-    const matchedTrack = tracks.find((track) => String(track.savedName || '').trim() === backendSavedName)
-    if (matchedTrack) {
-      setCurrentTrackId(matchedTrack.id)
-    }
-  }, [backendPlayback, clearCurrentProgramInfo, tracks, playStateRef]) // Removed setters from dependency to avoid loops, handled inside function
+    hasSyncedProgramClearRef.current = false
+  }, [playStateRef, shouldShowClearedProgramInfo, syncClearedCurrentProgramInfo])
 
   const playbackProgress = backendPlayback.progress || {}
   const playbackPositionLabel = formatProgressTime(playbackProgress.positionSec)
   const playbackDurationLabel = playbackProgress.durationSec == null ? '--:--' : formatProgressTime(playbackProgress.durationSec)
   const playbackProgressPercent = Math.max(0, Math.min(100, Number(playbackProgress.progressPercent || 0)))
-  const backendPlaybackState = String(backendPlayback.state || '').trim()
   const canPauseBackendPlayback = backendPlayback.available && backendPlaybackState === 'playing'
   const canResumeBackendPlayback = backendPlayback.available && backendPlaybackState === 'paused'
   const canStopBackendPlayback = backendPlayback.available && ['playing', 'paused'].includes(backendPlaybackState)
@@ -269,7 +296,7 @@ function MusicPage() {
     confirmExportProgramSheetPdf,
   } = useMusicEditorState({
     tracks,
-    currentTrackId,
+    currentTrackId: effectiveCurrentTrackId,
     currentShowName,
     isPlaylistLocked,
     musicPageApi,
@@ -300,7 +327,7 @@ function MusicPage() {
     openPreviewPlayer,
   } = useMusicPlaybackActions({
     tracks,
-    currentTrackId,
+    currentTrackId: effectiveCurrentTrackId,
     backendPlayback,
     audioCtxRef,
     musicPageApi,
@@ -359,8 +386,8 @@ function MusicPage() {
       <MusicMarqueePanel
         marqueeSpeedSec={marqueeSpeedSec}
         currentShowName={currentShowName}
-        currentProgramName={currentProgramName}
-        currentPerformerName={currentPerformerName}
+        currentProgramName={displayCurrentProgramName}
+        currentPerformerName={displayCurrentPerformerName}
       />
 
       <MusicPlaybackPanel
@@ -402,10 +429,10 @@ function MusicPage() {
         onDragEnd={onDragEnd}
         getTrackCreateTip={getTrackCreateTip}
         createTrackFromUpload={createTrackFromUpload}
-        getTrackPlaybackTip={(track) => getTrackPlaybackTip(track, getTrackPlaybackState(track, currentTrackId, backendPlayback))}
-        isTrackActive={(track) => isTrackActive(track, currentTrackId, backendPlayback)}
+        getTrackPlaybackTip={(track) => getTrackPlaybackTip(track, getTrackPlaybackState(track, effectiveCurrentTrackId, backendPlayback))}
+        isTrackActive={(track) => isTrackActive(track, effectiveCurrentTrackId, backendPlayback)}
         toggleTrackPlayback={toggleTrackPlayback}
-        getTrackPlaybackState={(track) => getTrackPlaybackState(track, currentTrackId, backendPlayback)}
+        getTrackPlaybackState={(track) => getTrackPlaybackState(track, effectiveCurrentTrackId, backendPlayback)}
         getTrackPreviewTip={getTrackPreviewTip}
         openPreviewPlayer={openPreviewPlayer}
         getTrackEditTip={getTrackEditTip}

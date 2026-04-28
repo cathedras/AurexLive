@@ -28,13 +28,10 @@ function HomeLivePreviewPlayer() {
   const loadLatestSession = useCallback(async () => {
     const result = await fetchWebRtcSessions()
     if (!result.success || !Array.isArray(result.sessions) || result.sessions.length === 0) {
-      setPreviewSession(null)
       return null
     }
 
-    const latestSession = pickLatestSession(result.sessions)
-    setPreviewSession(latestSession)
-    return latestSession
+    return pickLatestSession(result.sessions)
   }, [])
 
   const startPreview = async () => {
@@ -74,9 +71,26 @@ function HomeLivePreviewPlayer() {
   }
 
   useEffect(() => {
-    loadLatestSession().catch(() => {
-      setPreviewSession(null)
-    })
+    let cancelled = false
+
+    const syncLatestSession = async () => {
+      try {
+        const latestSession = await loadLatestSession()
+        if (!cancelled) {
+          setPreviewSession(latestSession)
+        }
+      } catch {
+        if (!cancelled) {
+          setPreviewSession(null)
+        }
+      }
+    }
+
+    syncLatestSession()
+
+    return () => {
+      cancelled = true
+    }
   }, [loadLatestSession])
 
   return (

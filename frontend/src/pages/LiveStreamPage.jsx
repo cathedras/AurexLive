@@ -738,7 +738,7 @@ function LiveStreamPage() {
               type="button"
               onClick={switchCamera}
               className="live-stream-page-secondary-btn"
-              disabled={!mediaStreamRef.current}
+              disabled={!isLivePublishing || isPublishing}
             >
               切换前后摄像头
             </button>

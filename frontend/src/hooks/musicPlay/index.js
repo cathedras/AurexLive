@@ -1,5 +1,6 @@
 export { useBackendPlaybackStream } from './useBackendPlaybackStream'
 export { useMusicEditorState } from './useMusicEditorState'
+export { useMusicPageApi } from './useMusicPageApi'
 export { useMusicPageData } from './useMusicPageData'
 export { useMusicPlaybackActions } from './useMusicPlaybackActions'
 export { useSpeechRecognition } from './useSpeechRecognition'

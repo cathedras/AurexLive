@@ -53,7 +53,7 @@ export function useMusicPlaybackActions({
     } catch (error) {
       setMessage(t(`Failed to switch show: ${error.message}`, `切换演出失败：${error.message}`))
     }
-  }, [musicPageApi, refreshPageData, setCurrentPerformerName, setCurrentProgramName, setCurrentTrackId, setMessage])
+  }, [musicPageApi, refreshPageData, setCurrentPerformerName, setCurrentProgramName, setCurrentTrackId, setMessage, t])
 
   const deleteHistoryShow = useCallback(async (fileName) => {
     try {
@@ -73,7 +73,7 @@ export function useMusicPlaybackActions({
     } catch (error) {
       setMessage(t(`Failed to delete history show: ${error.message}`, `删除历史演出失败：${error.message}`))
     }
-  }, [musicPageApi, refreshPageData, setCurrentPerformerName, setCurrentProgramName, setCurrentTrackId, setMessage])
+  }, [musicPageApi, refreshPageData, setCurrentPerformerName, setCurrentProgramName, setCurrentTrackId, setMessage, t])
 
   const getAudioContext = useCallback(() => {
     if (!audioCtxRef.current) {
@@ -112,7 +112,7 @@ export function useMusicPlaybackActions({
       osc.start(now + i * 0.15)
       osc.stop(now + i * 0.15 + 0.14)
     }
-  }, [getAudioContext, setMessage])
+  }, [getAudioContext, setMessage, t])
 
   const triggerLocalEffect = useCallback((effectName) => {
     playProgramEffect(effectName)
@@ -182,7 +182,7 @@ export function useMusicPlaybackActions({
       if (errorName === 'AbortError') return
       setMessage(t(`Playback failed: ${errorName} - ${errorMessage}`, `播放失败：${errorName} - ${errorMessage}`))
     }
-  }, [musicPageApi, reportClientError, setBackendPlayback, setCurrentPerformerName, setCurrentProgramName, setCurrentTrackId, setMessage, tracks])
+  }, [musicPageApi, reportClientError, setBackendPlayback, setCurrentPerformerName, setCurrentProgramName, setCurrentTrackId, setMessage, t, tracks])
 
   const controlBackendPlayback = useCallback(async (action) => {
     try {
@@ -216,7 +216,7 @@ export function useMusicPlaybackActions({
       setMessage(t(`Playback control failed: ${error.message}`, `播放控制失败：${error.message}`))
       return null
     }
-  }, [musicPageApi, setBackendPlayback, setCurrentPerformerName, setCurrentProgramName, setCurrentTrackId, setMessage])
+  }, [musicPageApi, setBackendPlayback, setCurrentPerformerName, setCurrentProgramName, setCurrentTrackId, setMessage, t])
 
   const setBackendVolume = useCallback(async (volume) => {
     try {
@@ -231,7 +231,7 @@ export function useMusicPlaybackActions({
       setMessage(t(`Failed to set volume: ${error.message}`, `设置音量失败：${error.message}`))
       return null
     }
-  }, [musicPageApi, setBackendPlayback, setMessage])
+  }, [musicPageApi, setBackendPlayback, setMessage, t])
 
   const toggleTrackPlayback = useCallback(async (track) => {
     if (!track?.savedName) {
@@ -296,7 +296,7 @@ export function useMusicPlaybackActions({
     } catch (error) {
       setMessage(t(`Failed to open preview player: ${error.message}`, `打开预听失败：${error.message}`))
     }
-  }, [backendPlayback, fetchBackendPlaybackState, musicPageApi, openFloatingPlayer, setMessage])
+  }, [backendPlayback, fetchBackendPlaybackState, musicPageApi, openFloatingPlayer, setMessage, t])
 
   return {
     fetchBackendPlaybackState,

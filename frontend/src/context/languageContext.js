@@ -1,8 +1,8 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, createElement, useContext, useEffect, useMemo, useState } from 'react'
 
 import { getPreferredLanguage, localizeText, normalizeLanguage, setPreferredLanguage } from '../utils/language'
 
-const LanguageContext = createContext(null)
+export const LanguageContext = createContext(null)
 
 export function LanguageProvider({ children }) {
   const [language, setLanguageState] = useState(() => getPreferredLanguage())
@@ -25,7 +25,7 @@ export function LanguageProvider({ children }) {
     t: (englishText, chineseText) => localizeText(language, englishText, chineseText),
   }), [language])
 
-  return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>
+  return createElement(LanguageContext.Provider, { value }, children)
 }
 
 export function useLanguage() {

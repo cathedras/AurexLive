@@ -80,7 +80,20 @@ function HomePage() {
   }, [fetchCurrentState, fetchMobileLinks, fetchUserSettings])
 
   useEffect(() => {
-    fetchPageData()
+    let cancelled = false
+
+    const loadPageData = async () => {
+      await fetchPageData()
+      if (cancelled) {
+        return
+      }
+    }
+
+    loadPageData()
+
+    return () => {
+      cancelled = true
+    }
   }, [fetchPageData])
 
   return (

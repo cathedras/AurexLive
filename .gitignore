@@ -11,3 +11,6 @@ runtime/
 .vscode/
 runtime/
 recordings/
+
+.github/skills
+AGENTS.md
