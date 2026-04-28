@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "AurexLive WeChat Media Uploader",
+  "version": "0.1.0",
+  "description": "Intercept WeChat web media downloads and upload them to AurexLive.",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://filehelper.weixin.qq.com/*",
+    "https://szfilehelper.weixin.qq.com/*",
+    "https://file.wx2.qq.com/*",
+    "https://localhost:3000/*",
+    "https://127.0.0.1:3000/*"
+  ],
+  "action": {
+    "default_title": "AurexLive WeChat Uploader",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://filehelper.weixin.qq.com/*",
+        "https://szfilehelper.weixin.qq.com/*"
+      ],
+      "js": [
+        "content-script.js"
+      ],
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "page-bridge.js"
+      ],
+      "matches": [
+        "https://filehelper.weixin.qq.com/*",
+        "https://szfilehelper.weixin.qq.com/*"
+      ]
+    }
+  ]
+}

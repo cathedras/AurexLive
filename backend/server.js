@@ -35,6 +35,7 @@ const settingsRoutes = require('./routes/settingsRoutes');
 const liveRoutes = require('./routes/liveRoutes');
 const mobileRoutes = require('./routes/mobileRoutes');
 const clientErrorRoutes = require('./routes/clientErrorRoutes');
+const extensionErrorRoutes = require('./routes/extensionErrorRoutes');
 const recordingRoutes = require('./routes/recordingRoutes'); // Import recording routes
 const recordingFilesRoutes = require('./routes/recordingFilesRoutes');
 const webrtcRoutes = require('./routes/webrtcRoutes');
@@ -178,6 +179,7 @@ app.use('/v1/settings', settingsRoutes);
 app.use('/v1/live', liveRoutes);
 app.use('/v1/mobile', mobileRoutes);
 app.use('/v1/client-error', clientErrorRoutes);
+app.use('/v1/extension-error', extensionErrorRoutes);
 app.use('/v1/recording', recordingRoutes); // Register recording routes
 app.use('/v1/webrtc', webrtcRoutes);
 

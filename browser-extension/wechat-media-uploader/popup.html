@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AurexLive WeChat Uploader</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f5f1e8;
+        --card: #fff9ef;
+        --line: #dcc9a9;
+        --text: #2b2317;
+        --muted: #6e5d43;
+        --accent: #b35c22;
+        --accent-strong: #8c4518;
+        --success: #0f6b43;
+      }
+
+      body {
+        width: 320px;
+        margin: 0;
+        padding: 16px;
+        font: 14px/1.45 -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;
+        background: radial-gradient(circle at top, #fff7e8 0%, var(--bg) 72%);
+        color: var(--text);
+      }
+
+      .card {
+        padding: 14px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--card);
+        box-shadow: 0 12px 30px rgba(96, 63, 32, 0.12);
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: 18px;
+      }
+
+      p {
+        margin: 0 0 12px;
+        color: var(--muted);
+      }
+
+      label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 600;
+      }
+
+      input[type='url'] {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 10px 12px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fffdf7;
+        color: var(--text);
+      }
+
+      .checkbox-row {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        margin: 12px 0;
+        color: var(--text);
+      }
+
+      button {
+        width: 100%;
+        border: 0;
+        border-radius: 10px;
+        padding: 11px 14px;
+        background: var(--accent);
+        color: #fff;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      button:hover {
+        background: var(--accent-strong);
+      }
+
+      .status {
+        min-height: 20px;
+        margin-top: 10px;
+        color: var(--success);
+        font-size: 12px;
+      }
+
+      .footnote {
+        margin-top: 12px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>AurexLive Upload</h1>
+      <p>Right-click a WeChat file, choose the AurexLive import item, then let the extension send it to your local server.</p>
+
+      <label for="backendUploadUrl">Backend upload URL</label>
+      <input id="backendUploadUrl" type="url" placeholder="https://localhost:3000/v1/upload" />
+
+      <label class="checkbox-row" for="preserveOriginalDownload">
+        <input id="preserveOriginalDownload" type="checkbox" />
+        <span>Keep the original WeChat download popup after the AurexLive import action starts.</span>
+      </label>
+
+      <button id="saveButton" type="button">Save settings</button>
+      <div id="status" class="status"></div>
+
+      <div class="footnote">
+        Ensure your browser trusts the local HTTPS certificate before testing uploads.
+      </div>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

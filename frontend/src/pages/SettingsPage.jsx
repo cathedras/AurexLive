@@ -26,6 +26,10 @@ const defaultSettings = {
     enabled: true,
     showModelHint: true,
   },
+  wechatImport: {
+    allowedExtensions: ['mp3', 'wav', 'm4a', 'mp4', 'mov', 'mkv'],
+    maxFileSizeMb: 100,
+  },
 }
 
 function SettingsPage() {
@@ -153,6 +157,30 @@ function SettingsPage() {
         </div>
       </div>
 
+      <div className="settings-panel">
+        <div className="settings-section-title">{t('WeChat import', '微信导入设置')}</div>
+        <div className="settings-grid">
+          <label className="settings-label">{t('Allowed file extensions', '允许的文件扩展名')}
+            <input
+              className="settings-input"
+              value={formatAllowedExtensions(settings.wechatImport.allowedExtensions)}
+              onChange={(e) => updateSection('wechatImport', 'allowedExtensions', parseAllowedExtensions(e.target.value))}
+              placeholder="mp3, wav, m4a, mp4"
+            />
+          </label>
+          <label className="settings-label">{t('Max file size (MB)', '最大文件大小(MB)')}
+            <input
+              className="settings-input"
+              type="number"
+              min="1"
+              max="1024"
+              value={settings.wechatImport.maxFileSizeMb}
+              onChange={(e) => updateSection('wechatImport', 'maxFileSizeMb', Number(e.target.value || 100))}
+            />
+          </label>
+        </div>
+      </div>
+
       <div className="settings-footer">
         <button className="upload-btn" onClick={onSave} disabled={saving}>{saving ? t('Saving...', '保存中...') : t('Save settings', '保存设置')}</button>
       </div>
@@ -181,7 +209,31 @@ function mergeSettings(input = {}) {
       ...defaultSettings.ai,
       ...(input.ai || {}),
     },
+    wechatImport: {
+      allowedExtensions: normalizeAllowedExtensions(input.wechatImport?.allowedExtensions),
+      maxFileSizeMb: Number(input.wechatImport?.maxFileSizeMb || defaultSettings.wechatImport.maxFileSizeMb),
+    },
   }
+}
+
+function normalizeAllowedExtensions(input) {
+  if (!Array.isArray(input)) {
+    return [...defaultSettings.wechatImport.allowedExtensions]
+  }
+
+  const normalized = input
+    .map((item) => String(item || '').trim().toLowerCase().replace(/^\./, ''))
+    .filter(Boolean)
+
+  return normalized.length > 0 ? Array.from(new Set(normalized)) : [...defaultSettings.wechatImport.allowedExtensions]
+}
+
+function parseAllowedExtensions(value) {
+  return normalizeAllowedExtensions(String(value || '').split(','))
+}
+
+function formatAllowedExtensions(extensions) {
+  return normalizeAllowedExtensions(extensions).join(', ')
 }
 
 export default SettingsPage

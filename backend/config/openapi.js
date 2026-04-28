@@ -189,7 +189,84 @@ const openApiSpec = {
               showModelHint: { type: 'boolean', example: true }
             }
           },
+          wechatImport: {
+            type: 'object',
+            properties: {
+              allowedExtensions: {
+                type: 'array',
+                items: { type: 'string' },
+                example: ['mp3', 'wav', 'm4a', 'mp4']
+              },
+              maxFileSizeMb: { type: 'integer', example: 100 }
+            }
+          },
           updatedAt: { type: 'string', format: 'date-time' }
+        }
+      },
+      WechatImportValidationRequest: {
+        type: 'object',
+        required: ['fileName'],
+        properties: {
+          fileName: { type: 'string', example: 'sample-track.mp3' },
+          fileSize: { type: 'integer', example: 2097152, nullable: true }
+        }
+      },
+      WechatImportValidationResponse: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean', example: true },
+          allowed: { type: 'boolean', example: true },
+          reasons: {
+            type: 'array',
+            items: { type: 'string' },
+            example: []
+          },
+          normalized: {
+            type: 'object',
+            properties: {
+              extension: { type: 'string', example: 'mp3' },
+              fileName: { type: 'string', example: 'sample-track.mp3' },
+              fileSize: { type: 'integer', nullable: true, example: 2097152 },
+              maxFileSizeMb: { type: 'integer', example: 100 },
+              allowedExtensions: {
+                type: 'array',
+                items: { type: 'string' },
+                example: ['mp3', 'wav', 'm4a']
+              }
+            }
+          },
+          settings: {
+            type: 'object',
+            properties: {
+              allowedExtensions: {
+                type: 'array',
+                items: { type: 'string' },
+                example: ['mp3', 'wav', 'm4a']
+              },
+              maxFileSizeMb: { type: 'integer', example: 100 }
+            }
+          }
+        }
+      },
+      ExtensionErrorReportRequest: {
+        type: 'object',
+        properties: {
+          source: { type: 'string', example: 'wechat-web-extension' },
+          component: { type: 'string', example: 'content-script' },
+          stage: { type: 'string', example: 'upload-media' },
+          severity: { type: 'string', example: 'error' },
+          message: { type: 'string', example: 'Extension context invalidated' },
+          stack: { type: 'string', example: 'Error: Extension context invalidated\n    at content-script.js:1:1' },
+          page: { type: 'string', example: 'https://szfilehelper.weixin.qq.com/' },
+          timestamp: { type: 'string', format: 'date-time' },
+          meta: { type: 'object', additionalProperties: true }
+        }
+      },
+      ExtensionErrorReportResponse: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean', example: true },
+          report: { $ref: '#/components/schemas/ExtensionErrorReportRequest' }
         }
       },
       LiveState: {
@@ -1447,6 +1524,30 @@ const openApiSpec = {
         }
       }
     },
+    '/v1/settings/wechat-import/validate': {
+      post: {
+        tags: ['Settings'],
+        summary: '校验微信导入文件是否符合当前设置',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/WechatImportValidationRequest' }
+            }
+          }
+        },
+        responses: {
+          200: {
+            description: '校验完成',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/WechatImportValidationResponse' }
+              }
+            }
+          }
+        }
+      }
+    },
     '/v1/live/state': {
       get: {
         tags: ['Live'],
@@ -1645,6 +1746,34 @@ const openApiSpec = {
                   properties: {
                     success: { type: 'boolean', example: true }
                   }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    '/v1/extension-error': {
+      post: {
+        tags: ['Diagnostics'],
+        summary: '上报浏览器扩展错误日志',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ExtensionErrorReportRequest'
+              }
+            }
+          }
+        },
+        responses: {
+          200: {
+            description: '记录成功',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/ExtensionErrorReportResponse'
                 }
               }
             }
