@@ -24,7 +24,6 @@ const {
   showRecordDir,
   runtimeConfigDir,
   reactDistDir,
-  frontendBuildMissingHtmlPath,
   ensureDirectories,
   recordingDir  // Recording directory
 } = require('./config/paths');
@@ -44,6 +43,11 @@ const musicPlaybackService = require('./services/musicPlaybackService');
 const requestLogger = require('./middleware/requestLogger');
 const { notFoundHandler, errorHandler } = require('./middleware/errorHandlers');
 const createStartupMonitor = require('./middleware/startupMonitor');
+const {
+  renderFrontendBuildMissingHtml,
+  renderNotFoundFallbackHtml,
+  renderServerErrorFallbackHtml,
+} = require('./utils/fallbackHtml');
 const logger = createLogger({ source: 'server' });
 // Prefer a generated OpenAPI JSON if present (from `backend/tools/generate-openapi.js`).
 let openApiSpec;
@@ -183,6 +187,20 @@ app.use('/v1/show_record', express.static(showRecordDir));
 app.use('/v1/recordings', recordingFilesRoutes); // Serve recording files with safe Range handling
 
 const hasReactDist = fs.existsSync(reactDistDir);
+const frontendPageRoutes = [
+  '/',
+  '/page',
+  '/page/upload',
+  '/page/music',
+  '/page/settings',
+  '/page/recording',
+  '/page/live-stream',
+  '/page/live-preview',
+  '/page/mobile-control',
+  '/page/error/404',
+  '/page/error/500',
+  '/page/build-missing',
+];
 
 if (useViteDevServer) {
   const redirectToVite = (req, res) => {
@@ -190,7 +208,7 @@ if (useViteDevServer) {
     res.redirect(`${getAccessibleFrontendDevServerUrl()}${targetPath}`);
   };
 
-  ['/','/page','/page/upload','/page/music','/page/settings','/page/recording','/page/live-stream','/page/live-preview'].forEach((routePath) => {
+  frontendPageRoutes.forEach((routePath) => {
     app.get(routePath, redirectToVite);
   });
 
@@ -198,7 +216,7 @@ if (useViteDevServer) {
 } else if (hasReactDist) {
   app.use(express.static(reactDistDir));
 
-  ['/page','/page/upload','/page/music','/page/settings', '/page/recording', '/page/live-stream', '/page/live-preview'].forEach((routePath) => {
+  frontendPageRoutes.filter((routePath) => routePath !== '/').forEach((routePath) => {
     app.get(routePath, (req, res) => {
       res.sendFile(path.join(reactDistDir, 'index.html'));
     });
@@ -209,7 +227,19 @@ if (useViteDevServer) {
   });
 } else {
   app.get('/', (req, res) => {
-    res.status(200).sendFile(frontendBuildMissingHtmlPath);
+    res.status(200).send(renderFrontendBuildMissingHtml());
+  });
+
+  app.get('/page/build-missing', (req, res) => {
+    res.status(200).send(renderFrontendBuildMissingHtml());
+  });
+
+  app.get('/page/error/404', (req, res) => {
+    res.status(404).send(renderNotFoundFallbackHtml());
+  });
+
+  app.get('/page/error/500', (req, res) => {
+    res.status(500).send(renderServerErrorFallbackHtml());
   });
 }
 

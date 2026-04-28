@@ -2,11 +2,6 @@ const express = require('express');
 const os = require('os');
 const QRCode = require('qrcode');
 
-const {
-  mobileCameraHtmlPath,
-  mobileControlHtmlPath
-} = require('../config/paths');
-
 const router = express.Router();
 
 function getFrontendDevServerUrl(localIp) {
@@ -26,6 +21,16 @@ function getFrontendDevServerUrl(localIp) {
   } catch {
     return `https://${localIp}:5173`;
   }
+}
+
+function getFrontendPageUrl(localIp, pagePath) {
+  const normalizedPagePath = String(pagePath || '').startsWith('/') ? String(pagePath || '') : `/${String(pagePath || '')}`;
+
+  if (process.env.NODE_ENV === 'production' || process.env.USE_VITE_DEV_SERVER === '0') {
+    return `http://${localIp}:3000${normalizedPagePath}`;
+  }
+
+  return `${getFrontendDevServerUrl(localIp)}${normalizedPagePath}`;
 }
 
 function getLocalIpAddress() {
@@ -49,22 +54,23 @@ async function buildQrDataUrl(text) {
 
 router.get('/camera', (req, res) => {
   const localIp = getLocalIpAddress();
-  const liveStreamUrl = `${getFrontendDevServerUrl(localIp)}/page/live-stream`;
+  const liveStreamUrl = getFrontendPageUrl(localIp, '/page/live-stream');
   return res.redirect(liveStreamUrl);
 });
 
 router.get('/control', (req, res) => {
-  return res.sendFile(mobileControlHtmlPath);
+  const localIp = getLocalIpAddress();
+  const controlPageUrl = getFrontendPageUrl(localIp, '/page/mobile-control');
+  return res.redirect(controlPageUrl);
 });
 
 router.get('/links', async (req, res) => {
   try {
     const localIp = getLocalIpAddress();
     const baseUrl = `http://${localIp}:3000`;
-    const frontendBaseUrl = getFrontendDevServerUrl(localIp);
-    const cameraUrl = `${frontendBaseUrl}/page/live-stream`;
-    const controlUrl = `${baseUrl}/v1/mobile/control`;
-    const liveStreamUrl = `${frontendBaseUrl}/page/live-stream`;
+    const cameraUrl = getFrontendPageUrl(localIp, '/page/live-stream');
+    const controlUrl = getFrontendPageUrl(localIp, '/page/mobile-control');
+    const liveStreamUrl = getFrontendPageUrl(localIp, '/page/live-stream');
 
     const [cameraQr, controlQr, liveStreamQr] = await Promise.all([
       buildQrDataUrl(cameraUrl),

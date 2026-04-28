@@ -1,19 +1,36 @@
+const fs = require('fs');
+
 const {
-  notFoundHtmlPath,
-  internalServerErrorHtmlPath
+  reactDistDir,
 } = require('../config/paths');
 const { createLogger } = require('./logger');
+const {
+  renderNotFoundFallbackHtml,
+  renderServerErrorFallbackHtml,
+} = require('../utils/fallbackHtml');
 
 const logger = createLogger({ source: 'errorHandler' });
+
+const useViteDevServer = process.env.NODE_ENV !== 'production' && process.env.USE_VITE_DEV_SERVER !== '0';
+const hasReactDist = fs.existsSync(reactDistDir);
+const canServeFrontendPages = useViteDevServer || hasReactDist;
 
 function prefersHtml(req) {
   const accept = String(req.headers.accept || '');
   return accept.includes('text/html');
 }
 
+function sendFrontendRouteRedirect(res, routePath) {
+  return res.redirect(302, routePath)
+}
+
 function notFoundHandler(req, res) {
   if (prefersHtml(req)) {
-    return res.status(404).sendFile(notFoundHtmlPath);
+    if (canServeFrontendPages) {
+      return sendFrontendRouteRedirect(res, '/page/error/404')
+    }
+
+    return res.status(404).send(renderNotFoundFallbackHtml())
   }
 
   return res.status(404).json({
@@ -30,7 +47,11 @@ function errorHandler(err, req, res, next) {
   }
 
   if (prefersHtml(req)) {
-    return res.status(500).sendFile(internalServerErrorHtmlPath);
+    if (canServeFrontendPages) {
+      return sendFrontendRouteRedirect(res, '/page/error/500')
+    }
+
+    return res.status(500).send(renderServerErrorFallbackHtml())
   }
 
   return res.status(500).json({

@@ -14,11 +14,6 @@ const currentShowJsonPath = path.join(runtimeConfigDir, 'current_show.json');
 const userSettingsJsonPath = path.join(runtimeConfigDir, 'user_settings.json');
 const liveStateJsonPath = path.join(runtimeConfigDir, 'live_state.json');
 const reactDistDir = path.join(projectRoot, 'frontend', 'dist');
-const frontendBuildMissingHtmlPath = path.join(__dirname, '..', 'views', 'frontend-build-missing.html');
-const notFoundHtmlPath = path.join(__dirname, '..', 'views', 'errors', '404.html');
-const internalServerErrorHtmlPath = path.join(__dirname, '..', 'views', 'errors', '500.html');
-const mobileCameraHtmlPath = path.join(__dirname, '..', 'views', 'mobile', 'camera.html');
-const mobileControlHtmlPath = path.join(__dirname, '..', 'views', 'mobile', 'control.html');
 
 const legacyRuntimeFiles = [
   {
@@ -72,10 +67,5 @@ module.exports = {
   userSettingsJsonPath,
   liveStateJsonPath,
   reactDistDir,
-  frontendBuildMissingHtmlPath,
-  notFoundHtmlPath,
-  internalServerErrorHtmlPath,
-  mobileCameraHtmlPath,
-  mobileControlHtmlPath,
   ensureDirectories
 };

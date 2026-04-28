@@ -2,7 +2,6 @@ const express = require('express');
 const os = require('os');
 const QRCode = require('qrcode');
 const musicPlaybackService = require('../services/musicPlaybackService');
-const { mobileControlHtmlPath } = require('../config/paths');
 const {
   readLiveState,
   writeLiveState

@@ -5,9 +5,11 @@ import LanguageSwitcher from './component/LanguageSwitcher'
 import { LanguageProvider } from './context/languageContext'
 import { MusicPageApiProvider } from './context/musicPageApiContext'
 import HomePage from './pages/HomePage'
+import MobileControlPage from './pages/MobileControlPage'
 import LiveStreamPage from './pages/LiveStreamPage'
 import LivePreviewPage from './pages/LivePreviewPage'
 import MusicPage from './pages/MusicPage'
+import SystemNoticePage from './pages/SystemNoticePage'
 import SettingsPage from './pages/SettingsPage'
 import UploadPage from './pages/UploadPage'
 import RecordingPage from './pages/RecordingPage' // 导入录音页面
@@ -25,6 +27,10 @@ function App() {
             <Route path="/page" element={<HomePage />} />
             <Route path="/page/live-stream" element={<LiveStreamPage />} />
             <Route path="/page/live-preview" element={<LivePreviewPage />} />
+            <Route path="/page/mobile-control" element={<MobileControlPage />} />
+            <Route path="/page/error/404" element={<SystemNoticePage variant="notFound" />} />
+            <Route path="/page/error/500" element={<SystemNoticePage variant="serverError" />} />
+            <Route path="/page/build-missing" element={<SystemNoticePage variant="buildMissing" />} />
             <Route path="/page/upload" element={<UploadPage />} />
             <Route
               path="/page/music"

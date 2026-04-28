@@ -26,13 +26,6 @@ install_dependencies() {
   else
     npm install
   fi
-
-  log "Installing frontend dependencies"
-  if [[ -f frontend/package-lock.json && "$use_ci_install" == "1" ]]; then
-    npm --prefix frontend ci
-  else
-    npm --prefix frontend install
-  fi
 }
 
 log "Preparing release"

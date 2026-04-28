@@ -78,7 +78,6 @@ Run the following in the project root:
 
 ```bash
 npm install
-npm --prefix frontend install
 ```
 
 ## Local Development
@@ -191,7 +190,6 @@ On macOS, recording system audio usually requires a virtual audio device such as
 
 ```bash
 npm install
-npm --prefix frontend install
 npm run build
 npm run pm2:start
 ```
@@ -204,7 +202,7 @@ npm run deploy
 
 This command will:
 
-- install root and frontend dependencies with `npm ci` when lockfiles are present
+- install project dependencies with `npm ci` when a lockfile is present
 - build the frontend production bundle
 - start or reload the PM2 applications defined in `ecosystem.config.js`
 - save the current PM2 process list
