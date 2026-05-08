@@ -9,7 +9,7 @@ class WsClientService {
 
     registerClient(ws) {
         const clientId = this.nextClientId++;
-        this.clients.set(clientId, { ws, type: null });
+        this.clients.set(clientId, { ws, type: null, typeMain: null, typeSub: null, connectionType: null, connectionParam: null, connectionPath: null, connectionUrl: null, sessionId: null });
 
         ws.on('close', () => {
             this.clients.delete(clientId);
@@ -31,6 +31,43 @@ class WsClientService {
             client.typeSub = null;
         }
         return true;
+    }
+
+    setClientContext(clientId, context) {
+        const client = this.clients.get(clientId);
+        if (!client) return false;
+
+        const nextContext = context || {};
+        if (Object.prototype.hasOwnProperty.call(nextContext, 'clientType')) {
+            client.connectionType = nextContext.clientType || null;
+        }
+        if (Object.prototype.hasOwnProperty.call(nextContext, 'param')) {
+            client.connectionParam = nextContext.param ?? null;
+        }
+        if (Object.prototype.hasOwnProperty.call(nextContext, 'pathname')) {
+            client.connectionPath = nextContext.pathname || null;
+        }
+        if (Object.prototype.hasOwnProperty.call(nextContext, 'requestUrl')) {
+            client.connectionUrl = nextContext.requestUrl || null;
+        }
+        if (Object.prototype.hasOwnProperty.call(nextContext, 'sessionId')) {
+            client.sessionId = nextContext.sessionId || null;
+        }
+
+        return true;
+    }
+
+    getClientContext(clientId) {
+        const client = this.clients.get(clientId);
+        if (!client) return null;
+
+        return {
+            clientType: client.connectionType,
+            param: client.connectionParam,
+            pathname: client.connectionPath,
+            requestUrl: client.connectionUrl,
+            sessionId: client.sessionId,
+        };
     }
 
     getClientType(clientId) {

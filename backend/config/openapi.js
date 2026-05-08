@@ -27,8 +27,8 @@ const openApiSpec = {
     { name: 'Diagnostics', description: '前端错误回传' }
   ],
   'x-websocket': {
-    endpoint: `${wsScheme}://localhost:3000/ws/{client-type}`,
-    description: 'WebSocket 连接路径即客户端类型，例如 recording、volume-:2。连接成功后服务端会先下发 clientId。',
+    endpoint: `${wsScheme}://localhost:3000/{client-type}?param={param}`,
+    description: 'WebSocket 连接路径即客户端类型，例如 recording、volume、live-stream。param 使用查询串传递，复杂值可用 JSON 字符串。连接成功后服务端会先下发 clientId。',
     clientToServer: [
       {
         type: 'identify',
@@ -1691,7 +1691,7 @@ const openApiSpec = {
                   type: 'object',
                   properties: {
                     success: { type: 'boolean', example: true },
-                    baseUrl: { type: 'string', example: 'http://192.168.1.10:3000' },
+                    baseUrl: { type: 'string', example: 'https://192.168.1.10:3000' },
                     links: {
                       type: 'object',
                       properties: {

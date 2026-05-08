@@ -11,7 +11,18 @@ const logger = createLogger({ source: 'initWebSocket' });
 const VOLUME_MONITOR_START_DELAY_MS = 0;
 
 function normalizeClientType(requestPath) {
-  const rawPath = String(requestPath || '/').split('?')[0].replace(/^\/+/, '');
+  const rawInput = String(requestPath || '/').split('?')[0].trim();
+  let rawPath = rawInput;
+
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rawInput)) {
+    try {
+      rawPath = new URL(rawInput).pathname || '/';
+    } catch (e) {
+      rawPath = rawInput;
+    }
+  }
+
+  rawPath = String(rawPath || '/').replace(/^\/+/, '');
   if (!rawPath) {
     return 'default';
   }
@@ -20,14 +31,48 @@ function normalizeClientType(requestPath) {
     return rawPath.slice(3) || 'default';
   }
 
-  if (rawPath === 'ws') {
+  if (rawPath.startsWith('wss/')) {
+    return rawPath.slice(4) || 'default';
+  }
+
+  if (rawPath === 'ws' || rawPath === 'wss') {
     return 'default';
   }
 
   return rawPath;
 }
 
-module.exports = function initWebSocket(server) {
+function parseWebSocketRequest(requestUrl) {
+  const rawUrl = String(requestUrl || '/').trim() || '/';
+  let parsedUrl;
+
+  try {
+    parsedUrl = new URL(rawUrl, 'http://localhost');
+  } catch (e) {
+    parsedUrl = new URL('/', 'http://localhost');
+  }
+
+  const pathname = parsedUrl.pathname || '/';
+  const rawParam = parsedUrl.searchParams.get('param');
+  let param = null;
+
+  if (rawParam != null && rawParam !== '') {
+    try {
+      param = JSON.parse(rawParam);
+    } catch (e) {
+      param = rawParam;
+    }
+  }
+
+  return {
+    requestUrl: rawUrl,
+    pathname,
+    clientType: normalizeClientType(pathname),
+    param,
+  };
+}
+
+function initWebSocket(server) {
   const wss = new WebSocket.Server({ server });
   const publicWsScheme = String(process.env.PUBLIC_WS_PROTOCOL || '').trim() || (server instanceof https.Server ? 'wss' : 'ws');
 
@@ -82,9 +127,9 @@ module.exports = function initWebSocket(server) {
     const clientId = wsClientService.registerClient(ws);
     // Determine the client type from the request path (strip the leading '/') and store it
     try {
-      const reqPath = req && req.url ? req.url : '/';
-      const clientType = normalizeClientType(reqPath);
-      wsClientService.setClientType(clientId, clientType);
+      const connectionContext = parseWebSocketRequest(req && req.url ? req.url : '/');
+      wsClientService.setClientType(clientId, connectionContext.clientType);
+      wsClientService.setClientContext(clientId, connectionContext);
     } catch (e) {}
     // Send the client ID to the frontend
     safeSend(ws, { type: 'clientId', data: clientId });
@@ -111,8 +156,11 @@ module.exports = function initWebSocket(server) {
       logger.info(`message parsed, type=${type} data=${JSON.stringify(data)}`, 'message');
       try {
         if (type === 'identify') {
-          const { clientType } = data || {};
+          const { clientType, sessionId } = data || {};
           wsClientService.setClientType(clientId, clientType);
+          if (sessionId) {
+            wsClientService.setClientContext(clientId, { sessionId });
+          }
           safeSend(ws, { type: 'identify-result', success: true });
           return;
         }
@@ -184,4 +232,9 @@ module.exports = function initWebSocket(server) {
   wss.on('error', (err) => {
     logger.error(err instanceof Error ? err : `[WS] server error ${String(err)}`, 'server')
   })
-};
+}
+
+initWebSocket.normalizeClientType = normalizeClientType;
+initWebSocket.parseWebSocketRequest = parseWebSocketRequest;
+
+module.exports = initWebSocket;

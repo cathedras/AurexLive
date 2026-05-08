@@ -235,7 +235,8 @@ function LiveStreamPage() {
       try {
         socket = await connectWs(
           'live-stream',
-          null,
+          { sessionId },
+          undefined,
           () => {
             if (stopped) {
               return
@@ -425,6 +426,12 @@ function LiveStreamPage() {
       localVideoRef.current.onerror = (event) => {
         appendDebugLog('📺 本地预览 video 出错', event)
       }
+
+      try {
+        await localVideoRef.current.play()
+      } catch (error) {
+        appendDebugLog('📺 本地预览 video play 失败', { message: error.message })
+      }
     }
     return stream
   }
@@ -514,6 +521,11 @@ function LiveStreamPage() {
 
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = mediaStreamRef.current
+        try {
+          await localVideoRef.current.play()
+        } catch (error) {
+          appendDebugLog('📺 切换摄像头后 video play 失败', { message: error.message })
+        }
       }
 
       currentFacingModeRef.current = nextFacingMode
@@ -730,6 +742,7 @@ function LiveStreamPage() {
           <video
             ref={localVideoRef}
             muted
+            autoPlay
             playsInline
             className="live-stream-page-video"
           />

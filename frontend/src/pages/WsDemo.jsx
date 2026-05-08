@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 
-import buildWsAttemptUrls from '../services/ws-addrconfig'
+import buildWsAttemptUrls, { buildWsTrustHint } from '../services/ws-addrconfig'
 
 export default function WsDemo() {
   const [url, setUrl] = useState(() => {
@@ -108,7 +108,8 @@ export default function WsDemo() {
         } catch {
           info = String(ev)
         }
-        appendLog({ type: 'error', text: `WebSocket error: ${info}` })
+        const hint = buildWsTrustHint(url)
+        appendLog({ type: 'error', text: `WebSocket error: ${info}${hint ? `\n${hint}` : ''}` })
       }
 
       // extra: catch addEventListener error events with more info

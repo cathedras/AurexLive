@@ -12,6 +12,7 @@ import {
   resumeLiveConsumer,
 } from '../services/liveStream/liveStreamService'
 import { connect as connectWs, sendJsonAsText } from '../services/wsClientService'
+import { useLivePreviewSession } from '../hooks/livePreview'
 
 function LivePreviewPage() {
   const videoRef = useRef(null)
@@ -22,6 +23,8 @@ function LivePreviewPage() {
   const consumedProducerIdsRef = useRef(new Set())
   const [searchParams] = useSearchParams()
   const sessionId = useMemo(() => String(searchParams.get('sessionId') || '').trim(), [searchParams])
+  const { latestSession, isLoading: isLatestSessionLoading } = useLivePreviewSession({ autoLoad: !sessionId })
+  const resolvedSessionId = sessionId || latestSession?.sessionId || ''
   const [status, setStatus] = useState('正在连接')
   const [errorMessage, setErrorMessage] = useState('')
   const [producerSummary, setProducerSummary] = useState([])
@@ -38,8 +41,8 @@ function LivePreviewPage() {
     srcObjectTracks: [],
   })
   const monitorLogSeqRef = useRef(0)
-  const displayStatus = sessionId ? status : '缺少 sessionId'
-  const displayMonitorStatus = sessionId ? monitorStatus : '缺少 sessionId'
+  const displayStatus = resolvedSessionId ? status : (isLatestSessionLoading ? '正在查找最新会话' : '缺少 sessionId')
+  const displayMonitorStatus = resolvedSessionId ? monitorStatus : (isLatestSessionLoading ? '正在查找最新会话' : '缺少 sessionId')
 
   const appendMonitorLog = useCallback((message, data = null) => {
     const details = (() => {
@@ -135,194 +138,201 @@ function LivePreviewPage() {
     }
   }, [captureVideoDebug])
 
+  const ensureDevice = useCallback(async () => {
+    if (deviceRef.current) {
+      return deviceRef.current
+    }
+
+    const rtpCapabilitiesResult = await fetchLiveRtpCapabilities()
+    if (!rtpCapabilitiesResult?.success) {
+      throw new Error(rtpCapabilitiesResult?.message || '获取 RTP 能力失败')
+    }
+
+    const device = new Device()
+    await device.load({ routerRtpCapabilities: rtpCapabilitiesResult.rtpCapabilities })
+    deviceRef.current = device
+    return device
+  }, [])
+
+  const ensureRecvTransport = useCallback(async () => {
+    const device = await ensureDevice()
+
+    if (recvTransportRef.current) {
+      return recvTransportRef.current
+    }
+
+    const transportResult = await createLiveTransport(resolvedSessionId, 'recv')
+    if (!transportResult?.success) {
+      throw new Error(transportResult?.message || '创建接收传输失败')
+    }
+
+    const transportData = transportResult.transport
+    const recvTransport = device.createRecvTransport({
+      id: transportData.transportId,
+      iceParameters: transportData.iceParameters,
+      iceCandidates: transportData.iceCandidates,
+      dtlsParameters: transportData.dtlsParameters,
+      sctpParameters: transportData.sctpParameters,
+    })
+
+    recvTransport.on('connect', ({ dtlsParameters }, callback, errback) => {
+      connectLiveTransport(recvTransport.id, dtlsParameters)
+        .then((result) => {
+          if (!result?.success) {
+            throw new Error(result?.message || '连接接收传输失败')
+          }
+          callback()
+        })
+        .catch((error) => {
+          setErrorMessage(error.message)
+          errback(error)
+        })
+    })
+
+    recvTransport.on('connectionstatechange', (state) => {
+      setStatus(`预览状态：${state}`)
+    })
+
+    recvTransportRef.current = recvTransport
+
+    if (!streamRef.current) {
+      streamRef.current = new MediaStream()
+    }
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = streamRef.current
+    }
+
+    return recvTransport
+  }, [ensureDevice, resolvedSessionId])
+
+  const consumeKnownProducers = useCallback(async (producers) => {
+    const recvTransport = await ensureRecvTransport()
+    let consumedAny = false
+
+    for (const producer of producers) {
+      if (!producer?.producerId || consumedProducerIdsRef.current.has(producer.producerId)) {
+        continue
+      }
+
+      try {
+        const consumeResult = await consumeLiveTrack(recvTransport.id, producer.producerId, deviceRef.current.rtpCapabilities)
+        if (!consumeResult?.success) {
+          appendMonitorLog('❌ consume 失败', {
+            producerId: producer.producerId,
+            response: consumeResult,
+          })
+          continue
+        }
+
+        appendMonitorLog('✅ consume 成功', {
+          producerId: producer.producerId,
+          consumer: consumeResult.consumer,
+        })
+
+        const consumer = await recvTransport.consume({
+          id: consumeResult.consumer.consumerId,
+          producerId: consumeResult.consumer.producerId,
+          kind: consumeResult.consumer.kind,
+          rtpParameters: consumeResult.consumer.rtpParameters,
+        })
+
+        consumerRefs.current.push(consumer)
+        consumedProducerIdsRef.current.add(producer.producerId)
+
+        if (!streamRef.current) {
+          streamRef.current = new MediaStream()
+        }
+
+        streamRef.current.addTrack(consumer.track)
+
+        if (videoRef.current) {
+          videoRef.current.srcObject = streamRef.current
+        }
+
+        console.log('✅ 订阅成功，已将 track 挂到 video:', {
+          producerId: producer.producerId,
+          consumerId: consumer.id,
+          kind: consumer.track.kind,
+        })
+
+        consumer.track.onunmute = () => {
+          captureVideoDebug(`track-unmute:${consumer.track.kind}`)
+          console.log('✅ 收到 WebRTC 视频/音频帧！', {
+            producerId: producer.producerId,
+            consumerId: consumer.id,
+            kind: consumer.track.kind,
+          })
+
+          if (consumer.track?.kind === 'video') {
+            setStatus('视频首帧已到达，正在渲染')
+          }
+
+          if (videoRef.current) {
+            attachStreamToVideo().catch((error) => {
+              setErrorMessage(error.message)
+            })
+          }
+        }
+
+        consumer.track.onmute = () => {
+          captureVideoDebug(`track-mute:${consumer.track.kind}`)
+          console.log('❌ 没有收到媒体帧', {
+            producerId: producer.producerId,
+            consumerId: consumer.id,
+            kind: consumer.track.kind,
+          })
+
+          if (consumer.track?.kind === 'video') {
+            setStatus('视频轨道暂时无帧')
+          }
+        }
+
+        await resumeLiveConsumer(consumer.id)
+
+        appendMonitorLog('✅ resume 已调用', {
+          consumerId: consumer.id,
+          kind: consumer.track.kind,
+          trackReadyState: consumer.track.readyState,
+          trackMuted: consumer.track.muted,
+        })
+
+        consumedAny = true
+
+        await attachStreamToVideo()
+
+        if (consumer.track?.kind === 'video') {
+          setStatus('视频流已连接，正在等待首帧')
+        }
+
+        captureVideoDebug(`consumer-added:${consumer.track.kind}`)
+      } catch (consumerError) {
+        setErrorMessage(consumerError.message)
+      }
+    }
+
+    return consumedAny
+  }, [appendMonitorLog, attachStreamToVideo, captureVideoDebug, ensureRecvTransport])
+
   useEffect(() => {
-    if (!sessionId) {
+    if (!resolvedSessionId) {
       return undefined
     }
 
     let stopped = false
     const videoElement = videoRef.current
 
-    const ensureDevice = async () => {
-      if (deviceRef.current) {
-        return deviceRef.current
-      }
-
-      const rtpCapabilitiesResult = await fetchLiveRtpCapabilities()
-      if (!rtpCapabilitiesResult?.success) {
-        throw new Error(rtpCapabilitiesResult?.message || '获取 RTP 能力失败')
-      }
-
-      const device = new Device()
-      await device.load({ routerRtpCapabilities: rtpCapabilitiesResult.rtpCapabilities })
-      deviceRef.current = device
-      return device
-    }
-
-    const ensureRecvTransport = async () => {
-      const device = await ensureDevice()
-
-      if (recvTransportRef.current) {
-        return recvTransportRef.current
-      }
-
-      const transportResult = await createLiveTransport(sessionId, 'recv')
-      if (!transportResult?.success) {
-        throw new Error(transportResult?.message || '创建接收传输失败')
-      }
-
-      const transportData = transportResult.transport
-      const recvTransport = device.createRecvTransport({
-        id: transportData.transportId,
-        iceParameters: transportData.iceParameters,
-        iceCandidates: transportData.iceCandidates,
-        dtlsParameters: transportData.dtlsParameters,
-        sctpParameters: transportData.sctpParameters,
-      })
-
-      recvTransport.on('connect', ({ dtlsParameters }, callback, errback) => {
-        connectLiveTransport(recvTransport.id, dtlsParameters)
-          .then((result) => {
-            if (!result?.success) {
-              throw new Error(result?.message || '连接接收传输失败')
-            }
-            callback()
-          })
-          .catch((error) => {
-            setErrorMessage(error.message)
-            errback(error)
-          })
-      })
-
-      recvTransport.on('connectionstatechange', (state) => {
-        setStatus(`预览状态：${state}`)
-      })
-
-      recvTransportRef.current = recvTransport
-
-      const stream = new MediaStream()
-      streamRef.current = stream
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-      }
-
-      return recvTransport
-    }
-
-    const consumeKnownProducers = async (producers) => {
-      const recvTransport = await ensureRecvTransport()
-
-      for (const producer of producers) {
-        if (!producer?.producerId || consumedProducerIdsRef.current.has(producer.producerId)) {
-          continue
-        }
-
-        try {
-          const consumeResult = await consumeLiveTrack(recvTransport.id, producer.producerId, deviceRef.current.rtpCapabilities)
-          if (!consumeResult?.success) {
-            appendMonitorLog('❌ consume 失败', {
-              producerId: producer.producerId,
-              response: consumeResult,
-            })
-            continue
-          }
-
-          appendMonitorLog('✅ consume 成功', {
-            producerId: producer.producerId,
-            consumer: consumeResult.consumer,
-          })
-
-          const consumer = await recvTransport.consume({
-            id: consumeResult.consumer.consumerId,
-            producerId: consumeResult.consumer.producerId,
-            kind: consumeResult.consumer.kind,
-            rtpParameters: consumeResult.consumer.rtpParameters,
-          })
-
-          consumerRefs.current.push(consumer)
-          consumedProducerIdsRef.current.add(producer.producerId)
-
-          if (!streamRef.current) {
-            streamRef.current = new MediaStream()
-          }
-
-          streamRef.current.addTrack(consumer.track)
-
-          if (videoRef.current) {
-            videoRef.current.srcObject = streamRef.current
-          }
-
-          console.log('✅ 订阅成功，已将 track 挂到 video:', {
-            producerId: producer.producerId,
-            consumerId: consumer.id,
-            kind: consumer.track.kind,
-          })
-
-          consumer.track.onunmute = () => {
-            captureVideoDebug(`track-unmute:${consumer.track.kind}`)
-            console.log('✅ 收到 WebRTC 视频/音频帧！', {
-              producerId: producer.producerId,
-              consumerId: consumer.id,
-              kind: consumer.track.kind,
-            })
-
-            if (consumer.track?.kind === 'video') {
-              setStatus('视频首帧已到达，正在渲染')
-            }
-
-            if (videoRef.current) {
-              attachStreamToVideo().catch((error) => {
-                setErrorMessage(error.message)
-              })
-            }
-          }
-
-          consumer.track.onmute = () => {
-            captureVideoDebug(`track-mute:${consumer.track.kind}`)
-            console.log('❌ 没有收到媒体帧', {
-              producerId: producer.producerId,
-              consumerId: consumer.id,
-              kind: consumer.track.kind,
-            })
-
-            if (consumer.track?.kind === 'video') {
-              setStatus('视频轨道暂时无帧')
-            }
-          }
-
-          await resumeLiveConsumer(consumer.id)
-
-          appendMonitorLog('✅ resume 已调用', {
-            consumerId: consumer.id,
-            kind: consumer.track.kind,
-            trackReadyState: consumer.track.readyState,
-            trackMuted: consumer.track.muted,
-          })
-
-          await attachStreamToVideo()
-
-          if (consumer.track?.kind === 'video') {
-            setStatus('视频流已连接，正在等待首帧')
-          }
-
-          captureVideoDebug(`consumer-added:${consumer.track.kind}`)
-        } catch (consumerError) {
-          setErrorMessage(consumerError.message)
-        }
-      }
-    }
-
     const loadSessionOnce = async () => {
       setErrorMessage('')
 
       try {
-        const sessionResult = await fetchLiveSession(sessionId)
+        const sessionResult = await fetchLiveSession(resolvedSessionId)
         if (!sessionResult?.success) {
           setStatus('等待主播开播')
           return
         }
 
-        const producersResult = await fetchLiveSessionProducers(sessionId)
+        const producersResult = await fetchLiveSessionProducers(resolvedSessionId)
         if (!producersResult?.success) {
           throw new Error(producersResult?.message || '获取 producer 失败')
         }
@@ -333,10 +343,6 @@ function LivePreviewPage() {
 
         const producers = Array.isArray(producersResult.producers) ? producersResult.producers : []
         setProducerSummary(producers)
-
-        await consumeKnownProducers(producers)
-
-        await attachStreamToVideo()
 
         setStatus(producers.length > 0 ? '正在预览直播' : '已连接，等待主播出画面')
       } catch (error) {
@@ -385,10 +391,46 @@ function LivePreviewPage() {
       deviceRef.current = null
       consumedProducerIdsRef.current = new Set()
     }
-  }, [appendMonitorLog, attachStreamToVideo, captureVideoDebug, sessionId])
+  }, [appendMonitorLog, attachStreamToVideo, captureVideoDebug, resolvedSessionId])
 
   useEffect(() => {
-    if (!sessionId) {
+    if (!resolvedSessionId || producerSummary.length === 0) {
+      return undefined
+    }
+
+    let cancelled = false
+
+    const syncProducers = async () => {
+      try {
+        const hasPendingProducers = producerSummary.some((producer) => producer?.producerId && !consumedProducerIdsRef.current.has(producer.producerId))
+        if (!hasPendingProducers) {
+          return
+        }
+
+        const consumedAny = await consumeKnownProducers(producerSummary)
+        if (cancelled || !consumedAny) {
+          return
+        }
+
+        await attachStreamToVideo()
+        setStatus('正在预览直播')
+      } catch (error) {
+        if (!cancelled) {
+          setErrorMessage(error.message)
+          setStatus('预览失败')
+        }
+      }
+    }
+
+    void syncProducers()
+
+    return () => {
+      cancelled = true
+    }
+  }, [attachStreamToVideo, consumeKnownProducers, producerSummary, resolvedSessionId])
+
+  useEffect(() => {
+    if (!resolvedSessionId) {
       return undefined
     }
 
@@ -400,7 +442,8 @@ function LivePreviewPage() {
         setMonitorStatus('正在连接')
         socket = await connectWs(
           'live-monitor',
-          null,
+          { sessionId: resolvedSessionId },
+          undefined,
           () => {
             if (stopped) {
               return
@@ -423,7 +466,7 @@ function LivePreviewPage() {
             }
 
             const payload = message.data || {}
-            if (payload.sessionId && payload.sessionId !== sessionId) {
+            if (payload.sessionId && payload.sessionId !== resolvedSessionId) {
               return
             }
 
@@ -481,10 +524,10 @@ function LivePreviewPage() {
           type: 'identify',
           data: {
             clientType: 'live-monitor',
-            sessionId,
+            sessionId: resolvedSessionId,
           },
         })
-        appendMonitorLog('已发送 identify', { clientType: 'live-monitor', sessionId })
+        appendMonitorLog('已发送 identify', { clientType: 'live-monitor', sessionId: resolvedSessionId })
       } catch (error) {
         if (stopped) {
           return
@@ -508,7 +551,7 @@ function LivePreviewPage() {
         }
       }
     }
-  }, [appendMonitorLog, sessionId])
+  }, [appendMonitorLog, resolvedSessionId])
 
   return (
     <div className="live-preview-page">
@@ -532,7 +575,7 @@ function LivePreviewPage() {
           </div>
 
           <div className="live-preview-page-panel">
-            <div className="live-preview-page-field"><strong>会话 ID</strong><div className="live-preview-page-break">{sessionId || '未提供'}</div></div>
+            <div className="live-preview-page-field"><strong>会话 ID</strong><div className="live-preview-page-break">{resolvedSessionId || '未提供'}</div></div>
             <div className="live-preview-page-field"><strong>状态</strong><div>{displayStatus}</div></div>
             {errorMessage ? <div className="live-preview-page-field live-preview-page-error"><strong>错误</strong><div>{errorMessage}</div></div> : null}
             <div className="live-preview-page-field"><strong>WebSocket 监控</strong><div>{displayMonitorStatus}</div></div>

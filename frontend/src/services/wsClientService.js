@@ -1,4 +1,4 @@
-import buildWsAttemptUrls from './ws-addrconfig'
+import buildWsAttemptUrls, { buildWsTrustHint } from './ws-addrconfig'
 
 // Helpers: convert text <-> Uint8Array and base64 helpers
 export function textToUint8Array(text) {
@@ -48,9 +48,16 @@ export function sendJsonAsBinary(ws, obj) {
   } catch (e) {}
 }
 
-// Connect wrapper that attempts multiple urls (same behavior as previous connectRecordingSocket)
-export async function connect(param, onMessageVolume, onOpen, onClose, onGenericMessage) {
-  const attemptUrls = buildWsAttemptUrls(param);
+// Connect wrapper that attempts multiple urls.
+export async function connect(clientTypeOrParam, paramOrOnMessageVolume, onMessageVolume, onOpen, onClose, onGenericMessage) {
+  const isLegacySignature = typeof paramOrOnMessageVolume === 'function';
+  const clientType = isLegacySignature ? String(clientTypeOrParam || 'ws') : String(clientTypeOrParam || 'ws');
+  const connectionParam = isLegacySignature ? undefined : paramOrOnMessageVolume;
+  const volumeHandler = isLegacySignature ? paramOrOnMessageVolume : onMessageVolume;
+  const openHandler = isLegacySignature ? onMessageVolume : onOpen;
+  const closeHandler = isLegacySignature ? onOpen : onClose;
+  const genericHandler = isLegacySignature ? onClose : onGenericMessage;
+  const attemptUrls = buildWsAttemptUrls(clientType, connectionParam);
   console.log('WSClientService connect, attemptUrls=', attemptUrls);
   return new Promise((resolve, reject) => {
     let finished = false;
@@ -68,7 +75,7 @@ export async function connect(param, onMessageVolume, onOpen, onClose, onGeneric
       volumeQueued = null;
 
       try {
-        onMessageVolume && onMessageVolume(nextVolume);
+        volumeHandler && volumeHandler(nextVolume);
       } catch (e) {}
     };
 
@@ -104,7 +111,7 @@ export async function connect(param, onMessageVolume, onOpen, onClose, onGeneric
 
     const wrapOnOpen = (ws, ev) => {
       finished = true;
-      try { onOpen && onOpen(ev); } catch (e) {}
+      try { openHandler && openHandler(ev); } catch (e) {}
       const facade = {
         close: () => { try { if (ws) ws.close(); } catch (e) {} },
         send: (data) => { try { if (ws) ws.send(data); } catch (e) {} },
@@ -115,10 +122,15 @@ export async function connect(param, onMessageVolume, onOpen, onClose, onGeneric
 
     const wrapOnClose = (ev) => {
       cancelQueuedVolumeMessage();
-      try { onClose && onClose(ev); } catch (e) {}
+      try { closeHandler && closeHandler(ev); } catch (e) {}
       if (!finished) {
         finished = true;
-        reject(new Error('ws_connect_failed'));
+        const trustHint = buildWsTrustHint(attemptUrls);
+        const error = new Error(trustHint ? `ws_connect_failed: ${trustHint}` : 'ws_connect_failed');
+        error.code = 'ws_connect_failed';
+        error.hint = trustHint;
+        error.attemptUrls = attemptUrls.slice();
+        reject(error);
       }
     };
 
@@ -138,7 +150,7 @@ export async function connect(param, onMessageVolume, onOpen, onClose, onGeneric
               if (typeof data === 'string') {
                 const obj = JSON.parse(data);
                   if (obj && obj.type === 'volume') queueVolumeMessage(obj.data);
-                else onGenericMessage && onGenericMessage(obj);
+                else genericHandler && genericHandler(obj);
               } else {
                 // binary frame -> try decode text then parse
                 try {
@@ -146,19 +158,19 @@ export async function connect(param, onMessageVolume, onOpen, onClose, onGeneric
                   if (txt) {
                     const obj = JSON.parse(txt);
                       if (obj && obj.type === 'volume') queueVolumeMessage(obj.data);
-                    else onGenericMessage && onGenericMessage(obj);
+                    else genericHandler && genericHandler(obj);
                     return;
                   }
                 } catch (e) {}
                 // fallback: wrapped binary
-                onGenericMessage && onGenericMessage({ type: 'binary', data: evm.data });
+                genericHandler && genericHandler({ type: 'binary', data: evm.data });
               }
             } catch (e) {
               // ignore
             }
           };
 
-          ws.onclose = (ev) => { try { onClose && onClose(ev); } catch (e) {}; };
+          ws.onclose = (ev) => { try { closeHandler && closeHandler(ev); } catch (e) {}; };
           ws.onerror = (ev) => { console.error('WS error', ev); };
           wrapOnOpen(ws, ev);
         };

@@ -4,16 +4,37 @@ const QRCode = require('qrcode');
 
 const router = express.Router();
 
-function getFrontendDevServerUrl(localIp) {
-  const configuredUrl = String(process.env.FRONTEND_DEV_SERVER_URL || 'https://localhost:5173').trim();
+const configuredMobileBaseUrl = String(process.env.MOBILE_BASE_URL || process.env.PUBLIC_BASE_URL || '').trim();
+const useViteDevServer = process.env.NODE_ENV !== 'production' && process.env.USE_VITE_DEV_SERVER !== '0';
+const explicitHttpsEnabled = ['1', 'true', 'yes'].includes(String(process.env.USE_HTTPS || '').trim().toLowerCase());
 
-  if (process.env.NODE_ENV === 'production' || process.env.USE_VITE_DEV_SERVER === '0') {
-    return configuredUrl;
+function normalizeBaseUrl(value) {
+  return String(value || '').trim().replace(/\/$/, '');
+}
+
+function isLocalhostHost(host) {
+  return /^(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/.test(String(host || '').trim());
+}
+
+function getRequestScheme(req) {
+  const forwardedProto = String(req.get('x-forwarded-proto') || '').split(',')[0].trim().toLowerCase();
+  if (forwardedProto === 'http' || forwardedProto === 'https') {
+    return forwardedProto;
   }
+
+  if (req.secure) {
+    return 'https';
+  }
+
+  return explicitHttpsEnabled ? 'https' : 'http';
+}
+
+function getDevServerUrl(localIp) {
+  const configuredUrl = normalizeBaseUrl(process.env.FRONTEND_DEV_SERVER_URL || 'https://localhost:5173');
 
   try {
     const parsed = new URL(configuredUrl);
-    if (['localhost', '127.0.0.1', '::1'].includes(parsed.hostname)) {
+    if (isLocalhostHost(parsed.host)) {
       parsed.hostname = localIp;
       return parsed.toString().replace(/\/$/, '');
     }
@@ -23,14 +44,34 @@ function getFrontendDevServerUrl(localIp) {
   }
 }
 
-function getFrontendPageUrl(localIp, pagePath) {
-  const normalizedPagePath = String(pagePath || '').startsWith('/') ? String(pagePath || '') : `/${String(pagePath || '')}`;
-
-  if (process.env.NODE_ENV === 'production' || process.env.USE_VITE_DEV_SERVER === '0') {
-    return `http://${localIp}:3000${normalizedPagePath}`;
+function getMobileBaseUrl(req, localIp) {
+  if (configuredMobileBaseUrl) {
+    return normalizeBaseUrl(configuredMobileBaseUrl);
   }
 
-  return `${getFrontendDevServerUrl(localIp)}${normalizedPagePath}`;
+  if (useViteDevServer) {
+    return getDevServerUrl(localIp);
+  }
+
+  const host = String(req.get('host') || '').trim();
+  const scheme = getRequestScheme(req);
+
+  if (host) {
+    if (isLocalhostHost(host)) {
+      const portMatch = host.match(/:(\d+)$/);
+      const port = portMatch ? `:${portMatch[1]}` : '';
+      return `${scheme}://${localIp}${port}`;
+    }
+
+    return `${scheme}://${host}`;
+  }
+
+  return `${scheme}://${localIp}:3000`;
+}
+
+function getMobilePageUrl(req, localIp, pagePath) {
+  const normalizedPagePath = String(pagePath || '').startsWith('/') ? String(pagePath || '') : `/${String(pagePath || '')}`;
+  return `${getMobileBaseUrl(req, localIp)}${normalizedPagePath}`;
 }
 
 function getLocalIpAddress() {
@@ -54,23 +95,23 @@ async function buildQrDataUrl(text) {
 
 router.get('/camera', (req, res) => {
   const localIp = getLocalIpAddress();
-  const liveStreamUrl = getFrontendPageUrl(localIp, '/page/live-stream');
+  const liveStreamUrl = getMobilePageUrl(req, localIp, '/page/live-stream');
   return res.redirect(liveStreamUrl);
 });
 
 router.get('/control', (req, res) => {
   const localIp = getLocalIpAddress();
-  const controlPageUrl = getFrontendPageUrl(localIp, '/page/mobile-control');
+  const controlPageUrl = getMobilePageUrl(req, localIp, '/page/mobile-control');
   return res.redirect(controlPageUrl);
 });
 
 router.get('/links', async (req, res) => {
   try {
     const localIp = getLocalIpAddress();
-    const baseUrl = `http://${localIp}:3000`;
-    const cameraUrl = getFrontendPageUrl(localIp, '/page/live-stream');
-    const controlUrl = getFrontendPageUrl(localIp, '/page/mobile-control');
-    const liveStreamUrl = getFrontendPageUrl(localIp, '/page/live-stream');
+    const baseUrl = getMobileBaseUrl(req, localIp);
+    const cameraUrl = getMobilePageUrl(req, localIp, '/page/live-stream');
+    const controlUrl = getMobilePageUrl(req, localIp, '/page/mobile-control');
+    const liveStreamUrl = getMobilePageUrl(req, localIp, '/page/live-stream');
 
     const [cameraQr, controlQr, liveStreamQr] = await Promise.all([
       buildQrDataUrl(cameraUrl),

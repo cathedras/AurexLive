@@ -36,7 +36,7 @@ AurexLive is a premium live production control platform built with Express and R
 ## Roadmap
 
 - Push to online multi-media live streaming platforms
-- Read files uploaded through WeChat
+- Read files uploaded through WeChat ✅
 - Optimize audio and video playback bitrates for preview, storage, and online playback
 - AI API integration
 - Professional audio tuning tools (future plan)
@@ -234,6 +234,48 @@ server {
 ```
 
 If you need HTTPS, configure `USE_HTTPS=1` and the corresponding certificate paths, or terminate TLS at the Nginx layer.
+
+For mobile QR access, set `MOBILE_BASE_URL` when you want the QR codes and redirects to use a specific HTTPS origin such as a public domain or an internal LAN host covered by the certificate SAN. If `MOBILE_BASE_URL` is not set, the backend derives the origin from the incoming request and falls back to the local LAN address when the page is opened on `localhost`.
+
+### Public CA + Internal Domain
+
+If you want the site to run on an internal domain while using a publicly trusted certificate, keep the DNS record internal and point it to the backend's LAN IP, then deploy a certificate issued by a public CA that covers the same hostname.
+
+Example production environment values:
+
+```bash
+NODE_ENV=production
+PORT=3000
+USE_HTTPS=1
+SSL_KEY_PATH=/etc/ssl/private/aurexlive.key
+SSL_CERT_PATH=/etc/ssl/certs/aurexlive.crt
+PUBLIC_BASE_URL=https://intra.example.com
+MOBILE_BASE_URL=https://intra.example.com
+```
+
+`PUBLIC_BASE_URL` is used by mobile QR links and redirects when you want a fixed HTTPS origin. `MOBILE_BASE_URL` can be the same value when the backend should always emit the internal domain.
+
+### Cross-Platform Deployment
+
+The deployment model is platform-agnostic. You can put TLS termination and request routing in any reverse proxy or edge layer that can forward standard HTTP headers, such as Nginx, Caddy, Traefik, Apache, IIS, HAProxy, or a tunnel/edge product that preserves the `Host` and `X-Forwarded-*` headers.
+
+Keep the application contract the same across platforms:
+
+```bash
+NODE_ENV=production
+PORT=3000
+USE_HTTPS=0
+PUBLIC_BASE_URL=https://intra.example.com
+MOBILE_BASE_URL=https://intra.example.com
+```
+
+If the platform terminates TLS before the backend, the backend can remain HTTP and the proxy must forward `X-Forwarded-Proto: https`. If the platform cannot terminate TLS cleanly, enable `USE_HTTPS=1` in the backend and point it at the certificate files instead.
+
+The backend only needs three things from the host platform:
+
+- A stable HTTPS origin that matches the certificate SAN
+- A request path preserved by the proxy
+- Forwarded host/proto headers when TLS is terminated upstream
 
 ## Notes
 
