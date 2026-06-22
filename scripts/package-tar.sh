@@ -13,13 +13,15 @@ cd "$ROOT_DIR"
 
 OUTPUT_PATH="${1:-}"
 if [ -z "$OUTPUT_PATH" ]; then
-  OUTPUT_PATH="$(dirname "$ROOT_DIR")/aurexlive-$(date +%Y%m%d-%H%M%S).tar.gz"
+  OUTPUT_PATH="$ROOT_DIR/dist/aurexlive-$(date +%Y%m%d-%H%M%S).tar.gz"
 fi
 
 log() { printf '\n[package-tar] %s\n' "$*"; }
 
 log "Packaging AurexLive from: $ROOT_DIR"
 log "Output: $OUTPUT_PATH"
+
+mkdir -p "$(dirname "$OUTPUT_PATH")"
 
 # Use find to generate the file list excluding development/transient files.
 # Piped to tar via -T - for portability across BSD and GNU tar.
