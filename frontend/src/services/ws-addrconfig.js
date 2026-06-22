@@ -11,7 +11,9 @@ export function buildWsTrustHint(target) {
 }
 
 export function buildWsAttemptUrls(clientType = 'ws', param) {
-  const scheme = 'wss';
+  // Derive WS scheme from page protocol: HTTPS → wss, HTTP → ws
+  const pageIsHttps = typeof location !== 'undefined' && location.protocol === 'https:';
+  const scheme = pageIsHttps ? 'wss' : 'ws';
   const apiPort = import.meta.env.VITE_API_PORT || '3000';
   const targetClientType = String(clientType || 'ws').replace(/^\/+/, '') || 'ws';
   const frontendHost = typeof location !== 'undefined' && location.hostname ? location.hostname : 'localhost';

@@ -1,304 +1,98 @@
+/**
+ * Music Playback Service — ffplay backend
+ *
+ * Uses ffplay (part of ffmpeg) for cross-platform audio playback.
+ * Supports stdin-based pause/resume via the 'p' key command,
+ * and 'q' for quit. Seek via -ss, volume via -volume.
+ *
+ * Environment: FFPLAY_PATH to override binary path.
+ */
 const fs = require('fs');
 const path = require('path');
-const { spawnSync } = require('child_process');
-const NodeMpv = require('node-mpv');
+const { spawn, spawnSync } = require('child_process');
 
 const { runtimeConfigDir, uploadDir } = require('../config/paths');
 const { readLiveState, updateBackendPlaybackState } = require('../utils/liveStateStore');
+const { createLogger } = require('../middleware/logger');
 
-const MPV_SOCKET_PATH = process.platform === 'win32'
-  ? '\\\\.\\pipe\\filetransfer-mpv'
-  : path.join(runtimeConfigDir, 'node-mpv.sock');
+const logger = createLogger({ source: 'MusicPlayback' });
 
 function hasCommand(command) {
-  const lookupCommand = process.platform === 'win32' ? 'where' : 'which';
-
+  const lookup = process.platform === 'win32' ? 'where' : 'which';
   try {
-    const result = spawnSync(lookupCommand, [command], { encoding: 'utf-8' });
-    return result.status === 0 && Boolean(String(result.stdout || '').trim());
-  } catch {
-    return false;
-  }
+    const r = spawnSync(lookup, [command], { encoding: 'utf-8' });
+    return r.status === 0 && Boolean(String(r.stdout || '').trim());
+  } catch { return false; }
 }
 
-function resolveMpvBinary() {
-  const explicitBinary = String(process.env.MPV_PATH || '').trim();
-  if (explicitBinary) {
-    return explicitBinary;
-  }
-
-  if (hasCommand('mpv')) {
-    return 'mpv';
-  }
-
+function resolveBinary() {
+  const envBin = String(process.env.FFPLAY_PATH || '').trim();
+  if (envBin) return envBin;
+  if (hasCommand('ffplay')) return 'ffplay';
   return '';
 }
 
-function ensureSocketDirectory(socketPath) {
-  if (process.platform === 'win32') {
-    return;
-  }
+function clampNumber(v, min, max) { return Math.min(Math.max(v, min), max); }
 
-  const socketDir = path.dirname(socketPath);
-  if (!fs.existsSync(socketDir)) {
-    fs.mkdirSync(socketDir, { recursive: true });
-  }
-
-  if (fs.existsSync(socketPath)) {
-    try {
-      fs.unlinkSync(socketPath);
-    } catch {
-      // ignore stale socket cleanup failure
-    }
-  }
-}
-
-function detectDriver() {
-  const binary = resolveMpvBinary();
-
-  if (!binary) {
-    return {
-      available: false,
-      name: '',
-      canPause: false,
-      binary: '',
-      socketPath: MPV_SOCKET_PATH,
-    };
-  }
-
-  return {
-    available: true,
-    name: 'mpv',
-    canPause: true,
-    binary,
-    socketPath: MPV_SOCKET_PATH,
-  };
-}
-
-function clampNumber(value, min, max) {
-  return Math.min(Math.max(value, min), max);
-}
-
-function toFiniteNumberOrNull(value) {
-  if (value === null || value === undefined || value === '') {
-    return null;
-  }
-
-  const nextValue = Number(value);
-  return Number.isFinite(nextValue) ? nextValue : null;
+function toFiniteNumberOrNull(v) {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
 }
 
 function parseDurationSeconds(filePath) {
-  const normalizedFilePath = path.resolve(String(filePath || '').trim());
-  if (!normalizedFilePath || !fs.existsSync(normalizedFilePath)) {
-    return null;
-  }
+  const fp = path.resolve(String(filePath || '').trim());
+  if (!fp || !fs.existsSync(fp)) return null;
 
   if (process.platform === 'darwin' && hasCommand('afinfo')) {
     try {
-      const result = spawnSync('afinfo', [normalizedFilePath], { encoding: 'utf-8' });
-      const output = `${result.stdout || ''}\n${result.stderr || ''}`;
-      const matched = output.match(/estimated duration:\s*([0-9.]+)\s*sec/i);
-      if (matched) {
-        const durationSec = Number(matched[1]);
-        return Number.isFinite(durationSec) ? durationSec : null;
-      }
-    } catch {
-      return null;
-    }
+      const r = spawnSync('afinfo', [fp], { encoding: 'utf-8' });
+      const m = `${r.stdout || ''}\n${r.stderr || ''}`.match(/estimated duration:\s*([0-9.]+)\s*sec/i);
+      if (m) { const d = Number(m[1]); if (Number.isFinite(d)) return d; }
+    } catch { /* fall through */ }
   }
 
   if (hasCommand('ffprobe')) {
     try {
-      const result = spawnSync('ffprobe', [
-        '-v', 'error',
-        '-show_entries', 'format=duration',
-        '-of', 'default=noprint_wrappers=1:nokey=1',
-        normalizedFilePath,
-      ], { encoding: 'utf-8' });
-      const durationSec = Number(String(result.stdout || '').trim());
-      return Number.isFinite(durationSec) ? durationSec : null;
-    } catch {
-      return null;
-    }
+      const r = spawnSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', fp], { encoding: 'utf-8' });
+      const d = Number(String(r.stdout || '').trim());
+      if (Number.isFinite(d)) return d;
+    } catch { /* ignore */ }
   }
-
   return null;
 }
 
 class MusicPlaybackService {
   constructor() {
-    this.driver = detectDriver();
-    this.player = null;
-    this.state = 'idle';
+    this.binary = resolveBinary();
+    this.available = Boolean(this.binary);
+    this.proc = null;
+    this.state = 'idle';        // idle | playing | paused
     this.volumePercent = 100;
     this.currentTrack = null;
-    this.pendingTrack = null;
     this.errorMessage = '';
-    this.progressSyncTimer = null;
+
     this.currentPositionSec = 0;
     this.durationSec = null;
     this.playStartedAtMs = null;
     this.pauseStartedAtMs = null;
-    this.restoreSnapshot = null;
+    this.pausePosSec = 0;
+    this.progressSyncTimer = null;
 
     try {
       const liveState = readLiveState();
-      this.restoreSnapshot = liveState?.backendPlayback || null;
       this.volumePercent = clampNumber(Number(liveState?.backendPlayback?.volumePercent ?? 100), 0, 100);
-    } catch {
-      this.restoreSnapshot = null;
-      this.volumePercent = 100;
-    }
-
-    if (this.driver.available) {
-      this.initializePlayer();
-    }
+    } catch { this.volumePercent = 100; }
 
     this.syncRuntimeState();
-  }
-
-  initializePlayer() {
-    if (this.player || !this.driver.available) {
-      return;
-    }
-
-    ensureSocketDirectory(this.driver.socketPath);
-
-    this.player = new NodeMpv({
-      audio_only: true,
-      binary: this.driver.binary,
-      debug: false,
-      verbose: false,
-      socket: this.driver.socketPath,
-      time_update: 1,
-    }, ['--no-config', '--load-scripts=no']);
-
-    this.bindPlayerEvents();
-    void this.applyVolume(this.volumePercent);
-  }
-
-  async applyVolume(value) {
-    if (!this.player) {
-      return;
-    }
-
-    await Promise.resolve(this.player.volume(value));
-  }
-
-  bindPlayerEvents() {
-    if (!this.player) {
-      return;
-    }
-
-    this.player.on('started', () => {
-      if (this.pendingTrack) {
-        this.currentTrack = this.pendingTrack;
-        this.pendingTrack = null;
-      }
-
-      if (!this.playStartedAtMs) {
-        this.playStartedAtMs = Date.now();
-      }
-
-      this.state = 'playing';
-      this.pauseStartedAtMs = null;
-      this.errorMessage = '';
-      this.startProgressSync();
-      this.syncRuntimeState();
-    });
-
-    this.player.on('paused', async () => {
-      this.state = 'paused';
-      this.pauseStartedAtMs = Date.now();
-      this.errorMessage = '';
-      await this.refreshPlaybackMetrics();
-      this.startProgressSync();
-      this.syncRuntimeState();
-    });
-
-    this.player.on('resumed', async () => {
-      this.state = 'playing';
-      this.pauseStartedAtMs = null;
-      this.errorMessage = '';
-      await this.refreshPlaybackMetrics();
-      this.startProgressSync();
-      this.syncRuntimeState();
-    });
-
-    this.player.on('stopped', () => {
-      if (this.pendingTrack) {
-        return;
-      }
-
-      this.state = 'idle';
-      this.currentTrack = null;
-      this.errorMessage = '';
-      this.resetProgressState();
-      this.stopProgressSync();
-      this.syncRuntimeState();
-    });
-
-    this.player.on('timeposition', (seconds) => {
-      const nextPosition = toFiniteNumberOrNull(seconds);
-      if (nextPosition !== null) {
-        this.currentPositionSec = nextPosition;
-      }
-    });
-
-    this.player.on('statuschange', (status = {}) => {
-      const nextDuration = toFiniteNumberOrNull(status.duration);
-      if (nextDuration !== null) {
-        this.durationSec = nextDuration;
-      }
-
-      if (!status.filename && !this.pendingTrack && ['playing', 'paused'].includes(this.state)) {
-        this.state = 'idle';
-        this.currentTrack = null;
-        this.resetProgressState();
-        this.stopProgressSync();
-      } else if (status.pause === true && this.currentTrack) {
-        this.state = 'paused';
-      } else if (status.pause === false && this.currentTrack) {
-        this.state = 'playing';
-      }
-
-      this.syncRuntimeState();
-    });
-
-    this.player.mpvPlayer?.on('error', (error) => {
-      this.errorMessage = error?.message || 'mpv initialization failed';
-      this.syncRuntimeState();
-    });
-  }
-
-  resolveTrackFilePath(track = {}) {
-    const candidates = [
-      String(track.filePath || '').trim(),
-      path.join(uploadDir, path.basename(String(track.savedName || '').trim())),
-    ].filter(Boolean);
-
-    return candidates.find((candidate) => fs.existsSync(candidate)) || '';
-  }
-
-  syncRuntimeState() {
-    updateBackendPlaybackState({
-      available: this.driver.available,
-      driver: this.driver.name,
-      canPause: this.driver.canPause,
-      volumePercent: this.volumePercent,
-      state: this.state,
-      errorMessage: this.errorMessage,
-      currentTrack: this.currentTrack,
-      progress: this.getProgressSnapshot(),
-    });
+    logger.info(`ffplay backend initialized, binary="${this.binary}" available=${this.available}`, 'constructor');
   }
 
   getPublicState() {
     return {
-      available: this.driver.available,
-      driver: this.driver.name,
-      canPause: this.driver.canPause,
+      available: this.available,
+      driver: 'ffplay',
+      canPause: true,
       volumePercent: this.volumePercent,
       state: this.state,
       errorMessage: this.errorMessage,
@@ -307,133 +101,9 @@ class MusicPlaybackService {
     };
   }
 
-  getProgressSnapshot() {
-    const nowMs = Date.now();
-    const startedAt = this.playStartedAtMs ? new Date(this.playStartedAtMs).toISOString() : null;
-    const pausedAt = this.pauseStartedAtMs ? new Date(this.pauseStartedAtMs).toISOString() : null;
-    const safePositionSec = Number.isFinite(this.currentPositionSec) ? this.currentPositionSec : 0;
-    const safeDurationSec = Number.isFinite(this.durationSec) ? this.durationSec : null;
-    const progressPercent = safeDurationSec && safeDurationSec > 0
-      ? clampNumber((safePositionSec / safeDurationSec) * 100, 0, 100)
-      : 0;
-
-    if (!this.currentTrack) {
-      return {
-        isAvailable: false,
-        positionSec: 0,
-        durationSec: safeDurationSec,
-        progressPercent: 0,
-        startedAt,
-        pausedAt,
-        updatedAt: new Date(nowMs).toISOString(),
-      };
-    }
-
-    return {
-      isAvailable: true,
-      positionSec: Number(safePositionSec.toFixed(3)),
-      durationSec: safeDurationSec == null ? null : Number(safeDurationSec.toFixed(3)),
-      progressPercent: Number(progressPercent.toFixed(2)),
-      startedAt,
-      pausedAt,
-      updatedAt: new Date(nowMs).toISOString(),
-    };
-  }
-
-  startProgressSync() {
-    this.stopProgressSync();
-    this.progressSyncTimer = setInterval(() => {
-      if (!this.currentTrack && !['paused', 'playing', 'stopping'].includes(this.state)) {
-        return;
-      }
-
-      this.syncRuntimeState();
-    }, 1000);
-  }
-
-  stopProgressSync() {
-    if (!this.progressSyncTimer) {
-      return;
-    }
-
-    clearInterval(this.progressSyncTimer);
-    this.progressSyncTimer = null;
-  }
-
-  resetProgressState() {
-    this.currentPositionSec = 0;
-    this.durationSec = null;
-    this.playStartedAtMs = null;
-    this.pauseStartedAtMs = null;
-  }
-
-  ensureAvailable() {
-    if (this.driver.available) {
-      return;
-    }
-
-    throw new Error('No available mpv player was detected on the backend. Please install mpv or set MPV_PATH.');
-  }
-
-  async refreshPlaybackMetrics() {
-    if (!this.player) {
-      return;
-    }
-
-    try {
-      const [timePos, duration, volume] = await Promise.all([
-        this.player.getProperty('time-pos'),
-        this.player.getProperty('duration'),
-        this.player.getProperty('volume'),
-      ]);
-
-      const nextTimePos = toFiniteNumberOrNull(timePos);
-      if (nextTimePos !== null) {
-        this.currentPositionSec = nextTimePos;
-      }
-
-      const nextDuration = toFiniteNumberOrNull(duration);
-      if (nextDuration !== null) {
-        this.durationSec = nextDuration;
-      }
-
-      const nextVolume = toFiniteNumberOrNull(volume);
-      if (nextVolume !== null) {
-        this.volumePercent = clampNumber(Math.round(nextVolume), 0, 100);
-      }
-    } catch {
-      // ignore metric refresh failures; event stream will continue updating
-    }
-  }
-
-  waitForPlayerEvent(eventName, timeoutMs = 3000) {
-    if (!this.player) {
-      return Promise.resolve();
-    }
-
-    return new Promise((resolve) => {
-      let finished = false;
-      let timeoutId = null;
-
-      const handleEvent = () => {
-        if (finished) {
-          return;
-        }
-
-        finished = true;
-        clearTimeout(timeoutId);
-        this.player.removeListener(eventName, handleEvent);
-        resolve();
-      };
-
-      timeoutId = setTimeout(handleEvent, timeoutMs);
-      this.player.once(eventName, handleEvent);
-    });
-  }
-
   async playFile(filePath, track = {}) {
     this.ensureAvailable();
-    this.initializePlayer();
+    this.stopProc();
 
     const normalizedFilePath = path.resolve(String(filePath || '').trim());
     if (!normalizedFilePath || !fs.existsSync(normalizedFilePath)) {
@@ -441,7 +111,7 @@ class MusicPlaybackService {
     }
 
     const durationSec = parseDurationSeconds(normalizedFilePath);
-    const nextTrack = {
+    this.currentTrack = {
       id: String(track.id || '').trim(),
       performer: String(track.performer || '').trim(),
       programName: String(track.programName || '').trim(),
@@ -450,141 +120,196 @@ class MusicPlaybackService {
       filePath: normalizedFilePath,
       durationSec: Number.isFinite(durationSec) ? Number(durationSec.toFixed(3)) : null,
     };
-
-    this.pendingTrack = nextTrack;
-    this.currentTrack = nextTrack;
+    this.durationSec = this.currentTrack.durationSec;
     this.currentPositionSec = 0;
-    this.durationSec = nextTrack.durationSec;
     this.playStartedAtMs = Date.now();
     this.pauseStartedAtMs = null;
+    this.pausePosSec = 0;
     this.state = 'playing';
     this.errorMessage = '';
-    this.startProgressSync();
-    this.syncRuntimeState();
 
-    const startedPromise = this.waitForPlayerEvent('started', 3000);
+    const vol = clampNumber(this.volumePercent, 0, 100);
+    const args = [
+      '-nodisp',
+      '-autoexit',
+      '-volume', String(vol),
+      '-i', normalizedFilePath,
+    ];
 
     try {
-      this.player.load(normalizedFilePath, 'replace');
-      // When mpv is paused, replacing the file can inherit the paused flag.
-      // Explicitly resume so selecting a different track always starts playback.
-      if (this.state === 'playing' || this.state === 'paused') {
-        this.player.resume();
-      }
-      await startedPromise;
-      await this.refreshPlaybackMetrics();
+      this.proc = spawn(this.binary, args, { stdio: ['pipe', 'ignore', 'pipe'] });
+      logger.info(`ffplay started PID=${this.proc.pid} file=${path.basename(normalizedFilePath)}`, 'playFile');
+
+      this.proc.on('exit', (code, sig) => {
+        logger.info(`ffplay exited PID=${this.proc?.pid} code=${code} sig=${sig}`, 'playFile');
+        this.proc = null;
+        if (this.state !== 'idle') {
+          this.state = 'idle';
+          this.resetProgressState();
+          this.stopProgressSync();
+          this.currentTrack = null;
+          this.syncRuntimeState();
+        }
+      });
+
+      this.proc.on('error', (err) => {
+        this.errorMessage = String(err.message || err);
+        logger.error(`ffplay error: ${this.errorMessage}`, 'playFile');
+      });
+
+      this.proc.stdin.on('error', () => { /* ignore broken pipe after exit */ });
+
+      this.startProgressSync();
       this.syncRuntimeState();
-      return this.getPublicState();
-    } catch (error) {
-      this.pendingTrack = null;
+    } catch (err) {
       this.state = 'idle';
       this.currentTrack = null;
-      this.errorMessage = error.message || 'mpv playback failed';
+      this.errorMessage = String(err.message || err);
       this.resetProgressState();
-      this.stopProgressSync();
       this.syncRuntimeState();
-      throw error;
+      throw err;
     }
+
+    return this.getPublicState();
   }
 
   async pause() {
     this.ensureAvailable();
+    if (this.state !== 'playing') throw new Error('There is no backend audio currently playing.');
 
-    if (!this.player || this.state !== 'playing') {
-      throw new Error('There is no backend audio currently playing.');
-    }
-
-    this.player.pause();
-    this.state = 'paused';
+    // Send 'p' to ffplay's stdin to toggle pause
+    this.sendStdin('p');
+    this.pausePosSec = this.currentPositionSec;
     this.pauseStartedAtMs = Date.now();
-    this.errorMessage = '';
-    await this.refreshPlaybackMetrics();
+    this.state = 'paused';
     this.syncRuntimeState();
     return this.getPublicState();
   }
 
   async resume() {
     this.ensureAvailable();
+    if (this.state !== 'paused') throw new Error('There is no paused backend audio to resume.');
 
-    if (!this.player || this.state !== 'paused') {
-      throw new Error('There is no backend audio to resume.');
-    }
-
-    this.player.resume();
+    // Send 'p' to ffplay's stdin to toggle pause
+    this.sendStdin('p');
     this.state = 'playing';
     this.pauseStartedAtMs = null;
+    this.playStartedAtMs = Date.now();
     this.errorMessage = '';
-    await this.refreshPlaybackMetrics();
     this.syncRuntimeState();
     return this.getPublicState();
   }
 
   async stop() {
-    this.ensureAvailable();
-
-    if (!this.player || !this.currentTrack) {
-      this.state = 'stopped';
-      this.currentTrack = null;
-      this.errorMessage = '';
-      this.stopProgressSync();
-      this.resetProgressState();
-      this.syncRuntimeState();
-      return this.getPublicState();
+    // Send 'q' to ffplay to quit gracefully
+    if (this.proc) {
+      this.sendStdin('q');
     }
-
-    this.player.stop();
-    this.pendingTrack = null;
-    this.state = 'stopping';
-    this.errorMessage = '';
+    this.state = 'idle';
+    this.currentTrack = null;
+    this.resetProgressState();
+    this.stopProgressSync();
     this.syncRuntimeState();
     return this.getPublicState();
   }
 
   async setVolume(value) {
-    this.ensureAvailable();
-    this.initializePlayer();
-
-    const nextVolume = clampNumber(Math.round(Number(value || 0)), 0, 100);
-    this.volumePercent = nextVolume;
-    await this.applyVolume(nextVolume);
+    this.volumePercent = clampNumber(Number(value) || 0, 0, 100);
     this.syncRuntimeState();
     return this.getPublicState();
   }
 
-  async restoreFromRuntimeState() {
-    const persistedState = this.restoreSnapshot || {};
-    const persistedTrack = persistedState.currentTrack || null;
-    const targetState = String(persistedState.state || '').trim();
+  // ── Internal ────────────────────────────────────────────────
 
-    this.restoreSnapshot = null;
-
-    if (!this.driver.available) {
-      this.errorMessage = 'No available mpv player was detected; skipping backend playback restore.';
-      this.syncRuntimeState();
-      return this.getPublicState();
+  ensureAvailable() {
+    if (!this.available) {
+      throw new Error('No audio player detected. Please install ffmpeg (ffplay) or set FFPLAY_PATH.');
     }
+  }
 
-    if (!persistedTrack || !['playing', 'paused'].includes(targetState)) {
-      this.syncRuntimeState();
-      return this.getPublicState();
+  sendStdin(data) {
+    if (!this.proc || !this.proc.stdin || this.proc.stdin.destroyed) return;
+    try {
+      this.proc.stdin.write(data);
+    } catch { /* ignore write errors */ }
+  }
+
+  stopProc() {
+    if (!this.proc) return;
+    this.sendStdin('q');
+    const pid = this.proc.pid;
+    setTimeout(() => {
+      try { if (this.proc) this.proc.kill('SIGKILL'); } catch { /* ignore */ }
+    }, 500).unref();
+    this.proc = null;
+    logger.info(`ffplay process stopped PID=${pid}`, 'stopProc');
+  }
+
+  startProgressSync() {
+    this.stopProgressSync();
+    this.progressSyncTimer = setInterval(() => {
+      if (!this.currentTrack || this.state === 'idle') return;
+      if (this.state === 'playing' && this.playStartedAtMs) {
+        const elapsed = (Date.now() - this.playStartedAtMs) / 1000;
+        this.currentPositionSec = this.pausePosSec + elapsed;
+      }
+      // Auto-stop when position exceeds duration
+      if (this.durationSec && this.currentPositionSec >= this.durationSec) {
+        this.state = 'idle';
+        this.currentTrack = null;
+        this.resetProgressState();
+        this.stopProgressSync();
+        this.stopProc();
+        this.syncRuntimeState();
+      } else {
+        this.syncRuntimeState();
+      }
+    }, 500);
+  }
+
+  stopProgressSync() {
+    if (this.progressSyncTimer) {
+      clearInterval(this.progressSyncTimer);
+      this.progressSyncTimer = null;
     }
+  }
 
-    const resolvedFilePath = this.resolveTrackFilePath(persistedTrack);
-    if (!resolvedFilePath) {
-      this.state = 'idle';
-      this.currentTrack = null;
-      this.errorMessage = 'The previously played audio file does not exist, so playback cannot be restored automatically.';
-      this.syncRuntimeState();
-      return this.getPublicState();
-    }
+  resetProgressState() {
+    this.currentPositionSec = 0;
+    this.durationSec = null;
+    this.playStartedAtMs = null;
+    this.pauseStartedAtMs = null;
+    this.pausePosSec = 0;
+  }
 
-    await this.playFile(resolvedFilePath, persistedTrack);
+  getProgressSnapshot() {
+    const nowMs = Date.now();
+    const safePos = Number.isFinite(this.currentPositionSec) ? this.currentPositionSec : 0;
+    const safeDur = Number.isFinite(this.durationSec) ? this.durationSec : null;
+    const pct = safeDur && safeDur > 0 ? clampNumber((safePos / safeDur) * 100, 0, 100) : 0;
 
-    if (targetState === 'paused') {
-      await this.pause();
-    }
+    return {
+      isAvailable: Boolean(this.currentTrack),
+      positionSec: Number(safePos.toFixed(3)),
+      durationSec: safeDur == null ? null : Number(safeDur.toFixed(3)),
+      progressPercent: Number(pct.toFixed(2)),
+      startedAt: this.playStartedAtMs ? new Date(this.playStartedAtMs).toISOString() : null,
+      pausedAt: this.pauseStartedAtMs ? new Date(this.pauseStartedAtMs).toISOString() : null,
+      updatedAt: new Date(nowMs).toISOString(),
+    };
+  }
 
-    return this.getPublicState();
+  syncRuntimeState() {
+    updateBackendPlaybackState({
+      available: this.available,
+      driver: 'ffplay',
+      canPause: true,
+      volumePercent: this.volumePercent,
+      state: this.state,
+      errorMessage: this.errorMessage,
+      currentTrack: this.currentTrack,
+      progress: this.getProgressSnapshot(),
+    });
   }
 }
 

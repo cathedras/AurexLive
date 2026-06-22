@@ -277,6 +277,42 @@ The backend only needs three things from the host platform:
 - A request path preserved by the proxy
 - Forwarded host/proto headers when TLS is terminated upstream
 
+### Windows Internal DNS + step-ca + PM2
+
+For an internal-only Windows server, you can run the app directly behind PM2, use CoreDNS for the internal hostname, and issue certificates from step-ca.
+
+In the PM2-managed setup, `show-console` runs the app and `dns-service` runs CoreDNS separately, so `pm2 logs dns-service` shows DNS startup output directly.
+`show-console` no longer starts CoreDNS itself.
+
+Recommended shape:
+
+```text
+client -> CoreDNS -> intra.example.com -> Windows server LAN IP -> PM2 -> Node HTTPS server
+```
+
+Suggested environment values:
+
+```bash
+NODE_ENV=production
+PORT=3000
+USE_HTTPS=1
+SSL_KEY_PATH=C:/aurexlive/certs/intra.example.com.key
+SSL_CERT_PATH=C:/aurexlive/certs/intra.example.com.crt
+PUBLIC_BASE_URL=https://intra.example.com
+MOBILE_BASE_URL=https://intra.example.com
+```
+
+Operational notes:
+
+1. Point the internal DNS record for `intra.example.com` to the server LAN IP.
+2. Issue the TLS certificate from step-ca for the same hostname so the SAN matches the DNS name.
+3. Start the app with `npm run deploy:win` or `scripts/deploy.ps1`.
+4. After certificate renewal, run `npm run pm2:restart` to reload the HTTPS process.
+
+The backend will attempt a one-time `step ca renew` during startup when HTTPS is enabled, so you do not need a scheduled renewal job.
+
+The detailed Windows walkthrough is in [docs/windows-internal-stepca.md](docs/windows-internal-stepca.md).
+
 ## Notes
 
 - The home page and setlist page read the current show and current set state.

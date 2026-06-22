@@ -5,6 +5,8 @@ const EventEmitter = require('events');
 const { recordingDir } = require('../config/paths');
 const wsClientService = require('./wsClientService');
 const { createLogger } = require('../middleware/logger');
+const { getRecordingFormat, buildRecordingFileName } = require('../utils/recordingConfig');
+const systemMonitor = require('./systemMonitorService');
 
 const logger = createLogger({ source: 'RecordingService' });
 
@@ -466,8 +468,7 @@ class RecordingService {
 
   // Start recording
   startRecording(clientId) {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const fileName = `recording-${timestamp}.flac`;
+    const fileName = buildRecordingFileName('recording');
     const filePath = path.join(recordingDir, fileName);
 
     if (!fs.existsSync(recordingDir)) {
@@ -497,10 +498,19 @@ class RecordingService {
   // params:
   // - clientId: associated client
   // - ffmpegArgs: array of args to pass to ffmpeg (if omitted a sensible default will be used)
-  // - outFileName: optional filename (defaults to recording-<timestamp>.flac)
+  // - outFileName: optional filename (defaults to buildRecordingFileName('recording'))
   startRecordingWithFfmpeg(clientId, ffmpegArgsOrDevice, outFileName) {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const fileName = outFileName || `recording-${timestamp}.flac`;
+    let fileName = outFileName || buildRecordingFileName('recording');
+    // Ensure filename extension matches the configured recording format
+    const fmt = getRecordingFormat();
+    const parsed = path.parse(fileName);
+    if (parsed.ext !== '.' + fmt.extension) {
+      fileName = parsed.name + '.' + fmt.extension;
+      logger.info(
+        `Normalized recording filename: ${outFileName} -> ${fileName} (format=${fmt.format})`,
+        'startRecordingWithFfmpeg'
+      );
+    }
     const filePath = path.join(recordingDir, fileName);
 
     logger.info(
@@ -553,6 +563,14 @@ class RecordingService {
     if (providedArgs) {
       spawnArgs = providedArgs.slice();
 
+      // On darwin, inject thread_queue_size before -i if not already present
+      if (platform === 'darwin' && !spawnArgs.includes('-thread_queue_size')) {
+        const iIdx = spawnArgs.indexOf('-i');
+        if (iIdx !== -1) {
+          spawnArgs.splice(iIdx, 0, '-thread_queue_size', '1024');
+        }
+      }
+
       const hasOutputTarget = spawnArgs.includes(filePath) || spawnArgs.includes(outFileName);
       if (!hasOutputTarget) {
         spawnArgs.push(filePath);
@@ -560,12 +578,16 @@ class RecordingService {
       logger.info(`[RecordingService] Using provided ffmpeg args for ${fileName}`, 'startRecordingWithFfmpeg');
     } else {
       logger.info(`No ffmpeg args provided, using platform-aware defaults for ${platform}`, 'startRecordingWithFfmpeg');
+      const fmt = getRecordingFormat();
+      const codecArgs = ['-c:a', fmt.codec].concat(fmt.codecArgs);
       if (platform === 'darwin') {
         const macDevice = normalizeAvfoundationAudioDevice(device);
         spawnArgs = [
+          '-thread_queue_size', '1024',
           '-f', 'avfoundation', '-i', macDevice,
+          '-async', '1',
           '-vn',
-          '-c:a', 'flac', '-compression_level', '12',
+          ...codecArgs,
           '-y', filePath
         ];
       } else if (platform === 'win32') {
@@ -573,20 +595,22 @@ class RecordingService {
         spawnArgs = [
           '-f', 'dshow', '-i', winDev,
           '-vn',
-          '-c:a', 'flac', '-compression_level', '12',
+          ...codecArgs,
           '-y', filePath
         ];
       } else {
         const linuxDev = device || 'default';
-
         spawnArgs = [
           '-f', 'alsa', '-i', linuxDev,
           '-vn',
-          '-c:a', 'flac', '-compression_level', '12',
+          ...codecArgs,
           '-y', filePath
         ];
       }
     }
+
+    // Start system monitoring to correlate audio glitches with system load
+    systemMonitor.startMonitoring(fileName);
 
     let ff;
     try {
@@ -599,9 +623,28 @@ class RecordingService {
       throw spawnErr;
     }
     logger.info(`ffmpeg started with PID ${ff.Errorno ? ff.Errorno : ff.pid}`, 'startRecordingWithFfmpeg');
+
+    // Renice ffmpeg to reduce risk of buffer underruns under load
+    try {
+      const pid = ff.pid;
+      if (pid && (process.platform === 'darwin' || process.platform === 'linux')) {
+        const renice = spawnSync('renice', ['-n', '-5', '-p', String(pid)]);
+        if (renice.status !== 0) {
+          logger.warning(`renice failed for PID ${pid}: ${renice.stderr}`, 'startRecordingWithFfmpeg');
+        }
+      }
+    } catch (e) {
+      // renice failure is non-fatal
+    }
+
     ff.on('exit', (code, sig) => {
       recordingInfo.isRecording = false;
       recordingInfo.ffmpegProc = null;
+
+      // Stop system monitor if ffmpeg crashed (stopRecording handles stop normally)
+      try {
+        systemMonitor.stopMonitoring();
+      } catch (e) { /* non-fatal */ }
     });
 
     ff.on('error', (err) => {
@@ -611,11 +654,20 @@ class RecordingService {
     });
 
     ff.stderr.on('data', (chunk) => {
+      const text = String(chunk || '').trim();
+
+      // Always log buffer underrun / overrun warnings regardless of debug flag
+      if (text) {
+        const lower = text.toLowerCase();
+        if (lower.includes('underrun') || lower.includes('overrun') || lower.includes('buffer')) {
+          logger.warning(`[recording-buffer] ${text}`, 'startRecordingWithFfmpeg');
+        }
+      }
+
       if (!RECORDING_OUTPUT_DEBUG) {
         return;
       }
 
-      const text = String(chunk || '').trim();
       if (text) {
         logger.info(`[recording-output] ${text}`, 'startRecordingWithFfmpeg');
       }
@@ -655,7 +707,7 @@ class RecordingService {
     }
     if (platform === 'darwin') {
       const macDevice = normalizeAvfoundationAudioDevice(device);
-      baseArgs = ['-f', 'avfoundation', '-i', macDevice];
+      baseArgs = ['-thread_queue_size', '1024', '-f', 'avfoundation', '-i', macDevice];
     } else if (platform === 'win32') {
       const winDev = device || 'audio=default';
       baseArgs = ['-f', 'dshow', '-i', winDev];
@@ -889,6 +941,17 @@ class RecordingService {
       } catch (e) {
         size = 0;
       }
+    }
+
+    // Stop system monitoring and save data
+    try {
+      const monitorResult = systemMonitor.stopMonitoring();
+      logger.info(
+        `System monitor stopped: ${monitorResult.sampleCount} samples over ${(monitorResult.durationMs / 1000).toFixed(1)}s`,
+        'stopRecording'
+      );
+    } catch (e) {
+      // non-fatal
     }
 
     // Remove from active recordings

@@ -31,6 +31,9 @@ const defaultSettings = {
     allowedExtensions: DEFAULT_WECHAT_IMPORT_EXTENSIONS,
     maxFileSizeMb: 100
   },
+  recording: {
+    format: 'mp3'
+  },
   updatedAt: null
 };
 
@@ -54,6 +57,12 @@ function mergeSettings(input = {}) {
   const preferencesInput = input.preferences || {};
   const wechatImportInput = input.wechatImport || {};
 
+  const { FORMAT_PRESETS } = require('../utils/recordingConfig');
+
+  const recordingInput = input.recording || {};
+  const rawFormat = String(recordingInput.format || '').trim().toLowerCase();
+  const recordingFormat = FORMAT_PRESETS[rawFormat] ? rawFormat : defaultSettings.recording.format;
+
   return {
     profile: {
       ...defaultSettings.profile,
@@ -75,6 +84,9 @@ function mergeSettings(input = {}) {
     wechatImport: {
       allowedExtensions: normalizeAllowedExtensions(wechatImportInput.allowedExtensions),
       maxFileSizeMb: normalizeMaxFileSizeMb(wechatImportInput.maxFileSizeMb)
+    },
+    recording: {
+      format: recordingFormat
     },
     updatedAt: input.updatedAt || null
   };

@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { useLanguage } from '../context/languageContext'
 
 import {
+  fetchDnsStatus as loadDnsStatus,
   fetchCurrentShowState as loadCurrentShowState,
   fetchMobileLinks as loadMobileLinks,
   fetchUserSettings as loadUserSettings,
@@ -18,6 +19,7 @@ function HomePage() {
   const [fontScalePercent, setFontScalePercent] = useState(100)
   const [marqueeSpeedSec, setMarqueeSpeedSec] = useState(16)
   const [mobileLinks, setMobileLinks] = useState(null)
+  const [dnsStatus, setDnsStatus] = useState(null)
   const [isQrSectionCollapsed, setIsQrSectionCollapsed] = useState(false)
 
   const fetchCurrentState = useCallback(async () => {
@@ -59,6 +61,19 @@ function HomePage() {
     }
   }, [])
 
+  const fetchDnsState = useCallback(async () => {
+    try {
+      const result = await loadDnsStatus()
+      if (!result.success || !result.status) {
+        return
+      }
+
+      setDnsStatus(result.status)
+    } catch {
+      setDnsStatus(null)
+    }
+  }, [])
+
   const fetchUserSettings = useCallback(async () => {
     try {
       const result = await loadUserSettings()
@@ -76,8 +91,8 @@ function HomePage() {
   }, [])
 
   const fetchPageData = useCallback(async () => {
-    await Promise.all([fetchCurrentState(), fetchUserSettings(), fetchMobileLinks()])
-  }, [fetchCurrentState, fetchMobileLinks, fetchUserSettings])
+    await Promise.all([fetchCurrentState(), fetchUserSettings(), fetchMobileLinks(), fetchDnsState()])
+  }, [fetchCurrentState, fetchDnsState, fetchMobileLinks, fetchUserSettings])
 
   useEffect(() => {
     let cancelled = false
@@ -125,6 +140,25 @@ function HomePage() {
           <div className="current-program-panel">
             <HomeLivePreviewPlayer />
             <div className="qr-section">
+              <div className="qr-card" style={{ marginBottom: '12px' }}>
+                <div className="qr-card-title">{t('Available DNS address', '当前可用 DNS 地址')}</div>
+                <div className="qr-link" title={dnsStatus?.availableAddress || mobileLinks?.baseUrl || '-'}>
+                  {dnsStatus?.availableAddress || mobileLinks?.baseUrl || '-'}
+                </div>
+                <div className="qr-placeholder" style={{ marginTop: '8px' }}>
+                  {dnsStatus?.state === 'ready'
+                    ? t('DNS service is ready.', 'DNS 服务已就绪。')
+                    : dnsStatus?.state === 'waiting-network'
+                      ? t('Waiting for network readiness, temporarily using localhost.', '正在等待网络就绪，当前暂时仅能使用 localhost。')
+                      : dnsStatus?.state === 'starting'
+                        ? t('DNS service is starting.', 'DNS 服务正在启动。')
+                        : dnsStatus?.state === 'disabled'
+                          ? t('DNS service is disabled in the current environment.', '当前环境已禁用 DNS 服务。')
+                          : dnsStatus?.state === 'error'
+                            ? (dnsStatus?.message || t('DNS service failed to start.', 'DNS 服务启动失败。'))
+                            : t('DNS service has not started yet.', 'DNS 服务尚未启动。')}
+                </div>
+              </div>
               <div className="qr-section-header">
                 <div className="qr-title">{t('Mobile access QR codes (mobile only)', '手机访问二维码（仅手机端使用）')}</div>
                 <button

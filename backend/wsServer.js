@@ -6,6 +6,7 @@ const path = require('path');
 const recordingService = require('./services/recordingService');
 const wsClientService = require('./services/wsClientService');
 const { createLogger } = require('./middleware/logger');
+const { getConfiguredPublicBaseUrl, getPublicWebSocketOrigin } = require('./utils/publicUrl');
 
 const logger = createLogger({ source: 'initWebSocket' });
 const VOLUME_MONITOR_START_DELAY_MS = 0;
@@ -75,6 +76,7 @@ function parseWebSocketRequest(requestUrl) {
 function initWebSocket(server) {
   const wss = new WebSocket.Server({ server });
   const publicWsScheme = String(process.env.PUBLIC_WS_PROTOCOL || '').trim() || (server instanceof https.Server ? 'wss' : 'ws');
+  const configuredPublicBaseUrl = getConfiguredPublicBaseUrl();
 
   // Print WebSocket endpoints once the HTTP server is listening
   function printEndpoints() {
@@ -83,6 +85,12 @@ function initWebSocket(server) {
       const port = addr && addr.port ? addr.port : process.env.PORT || 3000;
       const nets = os.networkInterfaces();
       const addrs = new Set();
+      const publicWsOrigin = getPublicWebSocketOrigin({ useHttps: server instanceof https.Server, port });
+
+      if (configuredPublicBaseUrl) {
+        addrs.add(publicWsOrigin);
+      }
+
       addrs.add('localhost');
       addrs.add('127.0.0.1');
       Object.values(nets).forEach((ifaceArr) => {
@@ -94,11 +102,16 @@ function initWebSocket(server) {
       });
       console.log('WebSocket endpoints:');
       addrs.forEach((a) => {
+        if (/^wss?:\/\//i.test(String(a))) {
+          console.log(`  ${a}`);
+          return;
+        }
+
         console.log(`  ${publicWsScheme}://${a}:${port}`);
       });
-      console.log(`Note: if front-end is served over HTTPS use ${publicWsScheme === 'wss' ? 'wss://' : 'ws://'} and configure TLS/proxy accordingly.`);
+      console.log('Note: if front-end is served over HTTPS, use wss:// and keep the certificate SAN aligned with the public origin.');
     } catch (e) {
-      logger.info(`WebSocket URL: ${publicWsScheme}://localhost:3000`, 'printEndpoints');
+      logger.info(`WebSocket URL: ${getPublicWebSocketOrigin({ useHttps: server instanceof https.Server, port: process.env.PORT || 3000 })}`, 'printEndpoints');
     }
   }
 

@@ -8,6 +8,7 @@ const ffmpegQueue = require('../services/ffmpegQueueService');
 const { recordingDir } = require('../config/paths');
 const { uploadDir } = require('../config/paths');
 const { normalizeUploadFileName } = require('../utils/fileUtils');
+const { getRecordingFormat } = require('../utils/recordingConfig');
 
 // Ensure the recording directory exists
 if (!fs.existsSync(recordingDir)) {
@@ -350,12 +351,19 @@ router.post('/start-recording-backend', (req, res) => {
     if (Array.isArray(ffmpegArgs) && ffmpegArgs.length) {
       args = ffmpegArgs;
     } else if (device) {
+      const fmt = getRecordingFormat();
+      const codecArgs = ['-c:a', fmt.codec].concat(fmt.codecArgs);
       if (process.platform === 'darwin') {
-        args = ['-f', 'avfoundation', '-i', device, '-vn', '-c:a', 'flac', '-compression_level', '12', '-y'];
+        args = [
+          '-thread_queue_size', '1024',
+          '-f', 'avfoundation', '-i', device,
+          '-async', '1', '-vn',
+          ...codecArgs, '-y'
+        ];
       } else if (process.platform === 'win32') {
-        args = ['-f', 'dshow', '-i', device, '-vn', '-c:a', 'flac', '-compression_level', '12', '-y'];
+        args = ['-f', 'dshow', '-i', device, '-vn', ...codecArgs, '-y'];
       } else {
-        args = ['-f', 'alsa', '-i', device, '-vn', '-c:a', 'flac', '-compression_level', '12', '-y'];
+        args = ['-f', 'alsa', '-i', device, '-vn', ...codecArgs, '-y'];
       }
 
       if (outFileName) {

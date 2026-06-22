@@ -13,6 +13,9 @@ export const API_ENDPOINTS = {
   mobile: {
     links: '/v1/mobile/links',
   },
+  dns: {
+    status: '/v1/dns/status',
+  },
   music: {
     backendControl: '/v1/music/backend-control',
     backendPlay: '/v1/music/backend-play',

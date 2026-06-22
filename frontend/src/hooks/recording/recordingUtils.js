@@ -77,12 +77,19 @@ export const findVirtualDevice = (items) => {
   }) || null
 }
 
+// Default recording extension used for auto-generated filenames.
+// The backend normalizes the extension to match its configured format,
+// so changing this constant only affects the initial filename suggestion.
+const AUTO_RECORDING_EXT = 'mp3'
+
 export const getCurrentTimestamp = () => Date.now()
 
 export const buildAutoRecordingFileName = () => {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
-  return `auto-recording-${timestamp}.flac`
+  return `auto-recording-${timestamp}.${AUTO_RECORDING_EXT}`
 }
+
+export const getAutoRecordingExtension = () => AUTO_RECORDING_EXT
 
 export const buildExternalAutoMonitorKey = () => `external-auto-${getCurrentTimestamp()}`
 

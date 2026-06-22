@@ -181,21 +181,50 @@
     script.onload = () => script.remove();
   }
 
-  function getStorageArea() {
-    if (chrome.storage && chrome.storage.sync) {
-      return chrome.storage.sync;
+  let storageArea = null;
+  let storageAreaName = 'local';
+
+  function initStorage() {
+    try {
+      if (typeof chrome === 'undefined') return;
+      if (chrome.storage && chrome.storage.sync) {
+        storageArea = chrome.storage.sync;
+        storageAreaName = 'sync';
+      } else if (chrome.storage && chrome.storage.local) {
+        storageArea = chrome.storage.local;
+        storageAreaName = 'local';
+      }
+    } catch {
+      // chrome.storage not available
     }
-
-    return chrome.storage.local;
   }
 
-  function getStorageAreaName() {
-    return chrome.storage && chrome.storage.sync ? 'sync' : 'local';
+  function promisifyStorageGet(defaults) {
+    return new Promise((resolve) => {
+      if (!storageArea) {
+        resolve(defaults);
+        return;
+      }
+      try {
+        const result = storageArea.get(defaults);
+        if (result && typeof result.then === 'function') {
+          result.then(resolve).catch(() => resolve(defaults));
+        } else {
+          storageArea.get(defaults, (items) => {
+            resolve(items || defaults);
+          });
+        }
+      } catch {
+        resolve(defaults);
+      }
+    });
   }
+
+  // Initialize storage
+  initStorage();
 
   async function loadConfig() {
-    const storage = getStorageArea();
-    const result = await storage.get(DEFAULT_CONFIG);
+    const result = await promisifyStorageGet(DEFAULT_CONFIG);
     return {
       backendUploadUrl: String(result.backendUploadUrl || DEFAULT_CONFIG.backendUploadUrl).trim(),
       preserveOriginalDownload: Boolean(result.preserveOriginalDownload),
@@ -494,7 +523,7 @@
   });
 
   chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName !== getStorageAreaName()) {
+    if (areaName !== storageAreaName) {
       return;
     }
 

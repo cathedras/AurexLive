@@ -1,0 +1,15 @@
+.:53 {
+    errors
+    log
+    cache 30
+    forward . __FORWARDERS__
+}
+
+www.auxm.com:53 {
+    hosts {
+        __LAN_IP__ www.auxm.com
+        fallthrough
+    }
+    errors
+    log
+}

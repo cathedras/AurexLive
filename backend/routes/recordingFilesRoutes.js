@@ -4,8 +4,20 @@ const path = require('path');
 const { pipeline } = require('stream');
 
 const { recordingDir } = require('../config/paths');
+const { getRecordingFormat, FORMAT_PRESETS } = require('../utils/recordingConfig');
 
 const router = express.Router();
+
+/** Look up MIME type by file extension, falling back to the active format. */
+function getContentType(filename) {
+  const ext = path.extname(filename).toLowerCase().replace(/^\./, '');
+  if (!ext) return undefined;
+  // Check presets first
+  for (const preset of Object.values(FORMAT_PRESETS)) {
+    if (preset.extension === ext) return preset.mimeType;
+  }
+  return undefined;
+}
 
 function parseRangeHeader(rangeHeader, fileSize) {
   if (!rangeHeader || !rangeHeader.startsWith('bytes=')) {
@@ -47,7 +59,7 @@ router.get('/:filename', (req, res) => {
 
     const stat = fs.statSync(filePath);
     const range = parseRangeHeader(req.headers.range, stat.size);
-    const contentType = filename.toLowerCase().endsWith('.flac') ? 'audio/flac' : undefined;
+    const contentType = getContentType(filename);
 
     res.setHeader('Accept-Ranges', 'bytes');
     if (contentType) {

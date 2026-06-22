@@ -13,9 +13,13 @@
     "https://localhost:3000/*",
     "https://127.0.0.1:3000/*"
   ],
+  "icons": {
+    "128": "icon.svg"
+  },
   "action": {
     "default_title": "AurexLive WeChat Uploader",
-    "default_popup": "popup.html"
+    "default_popup": "popup.html",
+    "default_icon": "icon.svg"
   },
   "content_scripts": [
     {

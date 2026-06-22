@@ -1,6 +1,23 @@
 const isHttpsEnabled = ['1', 'true', 'yes'].includes(String(process.env.USE_HTTPS || '').trim().toLowerCase());
-const httpScheme = isHttpsEnabled ? 'https' : 'http';
-const wsScheme = isHttpsEnabled ? 'wss' : 'ws';
+const { getConfiguredPublicBaseUrl, getPublicHttpOrigin, getPublicWebSocketOrigin } = require('../utils/publicUrl');
+
+const localHttpOrigin = `${isHttpsEnabled ? 'https' : 'http'}://localhost:3000`;
+const configuredPublicBaseUrl = getConfiguredPublicBaseUrl();
+const configuredPublicHttpOrigin = getPublicHttpOrigin({ useHttps: isHttpsEnabled });
+const configuredPublicWebSocketOrigin = getPublicWebSocketOrigin({ useHttps: isHttpsEnabled });
+const servers = [];
+
+if (configuredPublicBaseUrl && configuredPublicHttpOrigin !== localHttpOrigin) {
+  servers.push({
+    url: configuredPublicHttpOrigin,
+    description: '内网/生产域名'
+  });
+}
+
+servers.push({
+  url: localHttpOrigin,
+  description: '本地开发环境'
+});
 
 const openApiSpec = {
   openapi: '3.0.3',
@@ -9,12 +26,7 @@ const openApiSpec = {
     version: '1.0.0',
     description: '演出中台后端接口文档，覆盖文件上传、节目单、AI 口播、实时播控、WebSocket 协议与设置相关接口。'
   },
-  servers: [
-    {
-      url: `${httpScheme}://localhost:3000`,
-      description: '本地开发环境'
-    }
-  ],
+  servers,
   tags: [
     { name: 'Files', description: '文件上传与文件列表' },
     { name: 'Music', description: '节目单与音频播放相关接口' },
@@ -27,7 +39,7 @@ const openApiSpec = {
     { name: 'Diagnostics', description: '前端错误回传' }
   ],
   'x-websocket': {
-    endpoint: `${wsScheme}://localhost:3000/{client-type}?param={param}`,
+    endpoint: `${configuredPublicWebSocketOrigin}/{client-type}?param={param}`,
     description: 'WebSocket 连接路径即客户端类型，例如 recording、volume、live-stream。param 使用查询串传递，复杂值可用 JSON 字符串。连接成功后服务端会先下发 clientId。',
     clientToServer: [
       {
@@ -38,17 +50,17 @@ const openApiSpec = {
       {
         type: 'subscribe-volume',
         description: '订阅某个录音文件的音量监控，并触发服务端启动音量采集。',
-        data: { fileName: 'recording-2026-03-28T11-00-00-000Z.flac', device: ':2' }
+        data: { fileName: 'recording-2026-03-28T11-00-00-000Z.mp3', device: ':2' }
       },
       {
         type: 'add-chunk',
         description: '上传录音分块，当前主要用于旧录音链路兼容。',
-        data: { fileName: 'recording-2026-03-28T11-00-00-000Z.flac', chunkBase64: '...' }
+        data: { fileName: 'recording-2026-03-28T11-00-00-000Z.mp3', chunkBase64: '...' }
       },
       {
         type: 'get-status',
         description: '查询某个录音任务的状态。',
-        data: { fileName: 'recording-2026-03-28T11-00-00-000Z.flac' }
+        data: { fileName: 'recording-2026-03-28T11-00-00-000Z.mp3' }
       },
       {
         type: 'echo',
@@ -64,14 +76,14 @@ const openApiSpec = {
     serverToClient: [
       { type: 'clientId', description: '连接建立后下发的客户端标识。', data: 1 },
       { type: 'identify-result', description: 'identify 命令结果。', success: true },
-      { type: 'subscribe-volume-result', description: 'subscribe-volume 命令结果。', success: true, fileName: 'recording-2026-03-28T11-00-00-000Z.flac' },
+      { type: 'subscribe-volume-result', description: 'subscribe-volume 命令结果。', success: true, fileName: 'recording-2026-03-28T11-00-00-000Z.mp3' },
       { type: 'monitor-start', description: '音量监控启动结果。', data: { success: true } },
       { type: 'add-chunk-result', description: 'add-chunk 命令结果。', success: true },
       { type: 'get-status-result', description: 'get-status 命令结果。', success: true, data: { type: 'object' } },
       { type: 'echo', description: 'echo/raw 的回显消息。', success: true, data: { hello: 'world' } },
       { type: 'live-push-event', description: '手机端推流事件通知。', data: { event: 'producer-created', sessionId: '...', producerId: '...', kind: 'video', timestamp: 1679999940000 } },
       { type: 'live-push-event', description: '直播发布端 transport 诊断推送，服务端每 5 秒发送一次。', data: { event: 'transport-state', sessionId: '...', transportId: '...', transport: { iceState: 'completed', dtlsState: 'connected', connectionState: 'connected' }, source: 'periodic', intervalMs: 5000, timestamp: 1679999940000 } },
-      { type: 'volume', description: '音量推送事件，通常是 0-100 的整数。', data: { fileName: 'recording-2026-03-28T11-00-00-000Z.flac', volume: 42, timestamp: 1679999940000 } }
+      { type: 'volume', description: '音量推送事件，通常是 0-100 的整数。', data: { fileName: 'recording-2026-03-28T11-00-00-000Z.mp3', volume: 42, timestamp: 1679999940000 } }
     ]
   },
   components: {
@@ -314,14 +326,14 @@ const openApiSpec = {
         RecordingInfo: {
           type: 'object',
           properties: {
-            fileName: { type: 'string', example: 'recording-2026-03-28T11-00-00-000Z.flac' },
+            fileName: { type: 'string', example: 'recording-2026-03-28T11-00-00-000Z.mp3' },
             startTime: { type: 'string', format: 'date-time' }
           }
         },
         VolumeEvent: {
           type: 'object',
           properties: {
-            fileName: { type: 'string', example: 'recording-2026-03-28T11-00-00-000Z.flac' },
+            fileName: { type: 'string', example: 'recording-2026-03-28T11-00-00-000Z.mp3' },
             volume: { type: 'integer', example: 42 },
             timestamp: { type: 'integer', example: 1679999940000 }
           }
@@ -329,10 +341,10 @@ const openApiSpec = {
         RecordingListItem: {
           type: 'object',
           properties: {
-            filename: { type: 'string', example: 'recording-2026-03-28T11-00-00-000Z.flac' },
+            filename: { type: 'string', example: 'recording-2026-03-28T11-00-00-000Z.mp3' },
             size: { type: 'integer', example: 12345678 },
             createdAt: { type: 'string', format: 'date-time' },
-            url: { type: 'string', example: '/v1/recordings/recording-2026-03-28T11-00-00-000Z.flac' }
+            url: { type: 'string', example: '/v1/recordings/recording-2026-03-28T11-00-00-000Z.mp3' }
           }
         },
         RecordingListResponse: {
@@ -379,7 +391,7 @@ const openApiSpec = {
         ConversionJobRequest: {
           type: 'object',
           properties: {
-            fileName: { type: 'string', example: 'recording-2026-03-28T11-00-00-000Z.flac' },
+            fileName: { type: 'string', example: 'recording-2026-03-28T11-00-00-000Z.mp3' },
             inputUrl: { type: 'string', example: 'https://example.com/input.mp3' },
             outFileName: { type: 'string', example: 'output.mp3' },
             ffmpegArgs: {
@@ -757,7 +769,7 @@ const openApiSpec = {
                 properties: {
                   clientId: { type: 'string', example: '1' },
                   device: { type: 'string', example: ':2', description: '平台依赖的设备标识，macOS avfoundation 使用 :<index>' },
-                  outFileName: { type: 'string', example: 'myrecord.flac' },
+                  outFileName: { type: 'string', example: 'myrecord.mp3' },
                   ffmpegArgs: { type: 'array', items: { type: 'string' }, description: '如需自定义完整 ffmpeg 参数，可传数组' }
                 }
               }

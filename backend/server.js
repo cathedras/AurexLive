@@ -32,6 +32,7 @@ const fileRoutes = require('./routes/fileRoutes');
 const musicRoutes = require('./routes/musicRoutes');
 const aiRoutes = require('./routes/aiRoutes');
 const settingsRoutes = require('./routes/settingsRoutes');
+const dnsRoutes = require('./routes/dnsRoutes');
 const liveRoutes = require('./routes/liveRoutes');
 const mobileRoutes = require('./routes/mobileRoutes');
 const clientErrorRoutes = require('./routes/clientErrorRoutes');
@@ -49,6 +50,8 @@ const {
   renderNotFoundFallbackHtml,
   renderServerErrorFallbackHtml,
 } = require('./utils/fallbackHtml');
+const { getPublicHttpOrigin } = require('./utils/publicUrl');
+const { maybeRenewCertificateOnStartup } = require('./utils/startupCertificateRenewal');
 const logger = createLogger({ source: 'server' });
 // Prefer a generated OpenAPI JSON if present (from `backend/tools/generate-openapi.js`).
 let openApiSpec;
@@ -79,12 +82,16 @@ function resolveCertPath(envValue, fallback) {
   return path.isAbsolute(envValue) ? envValue : path.resolve(projectRoot, envValue);
 }
 
-const explicitHttpsFlag = ['1', 'true', 'yes'].includes(String(process.env.USE_HTTPS || '').trim().toLowerCase());
-const useHttps = explicitHttpsFlag || (
-  process.env.NODE_ENV !== 'production' &&
-  fs.existsSync(defaultDevKeyPath) &&
-  fs.existsSync(defaultDevCertPath)
-);
+const useHttpsRaw = String(process.env.USE_HTTPS || '').trim().toLowerCase();
+const explicitHttpsFlag = ['1', 'true', 'yes'].includes(useHttpsRaw);
+const explicitHttpFlag  = ['0', 'false', 'no'].includes(useHttpsRaw);
+const useHttps = explicitHttpFlag
+  ? false
+  : explicitHttpsFlag || (
+      process.env.NODE_ENV !== 'production' &&
+      fs.existsSync(defaultDevKeyPath) &&
+      fs.existsSync(defaultDevCertPath)
+    );
 const frontendDevServerUrl = process.env.FRONTEND_DEV_SERVER_URL || 'https://localhost:5173';
 const useViteDevServer = process.env.NODE_ENV !== 'production' && process.env.USE_VITE_DEV_SERVER !== '0';
 
@@ -107,8 +114,6 @@ function createServerInstance() {
 
   return https.createServer(tlsOptions, app);
 }
-
-const server = createServerInstance();
 
 function getAccessibleFrontendDevServerUrl() {
   if (!useViteDevServer) {
@@ -137,7 +142,6 @@ function getAccessibleFrontendDevServerUrl() {
 
 // WebSocket service (extracted to backend/wsServer.js)
 const initWebSocket = require('./wsServer');
-initWebSocket(server);
 
 // Configure CORS (needed when the frontend and backend use different ports)
 app.use(cors());
@@ -176,6 +180,7 @@ app.use('/v1/files', fileRoutes);
 app.use('/v1/music', musicRoutes);
 app.use('/v1/ai', aiRoutes);
 app.use('/v1/settings', settingsRoutes);
+app.use('/v1/dns', dnsRoutes);
 app.use('/v1/live', liveRoutes);
 app.use('/v1/mobile', mobileRoutes);
 app.use('/v1/client-error', clientErrorRoutes);
@@ -251,13 +256,13 @@ app.use(errorHandler);
 let listenAttempts = 0;
 const maxListenAttempts = 5;
 
-function startServer() {
+function startServer(server) {
   const onError = (error) => {
     if (error && error.code === 'EADDRINUSE' && listenAttempts < maxListenAttempts) {
       listenAttempts += 1;
       const retryDelayMs = Math.min(1000 * listenAttempts, 3000);
       logger.warning(`Port ${port} is already in use; retrying in ${retryDelayMs}ms (${listenAttempts}/${maxListenAttempts})`, 'server.listen');
-      setTimeout(startServer, retryDelayMs);
+      setTimeout(() => startServer(server), retryDelayMs);
       return;
     }
 
@@ -268,12 +273,13 @@ function startServer() {
   server.once('error', onError);
   server.listen(port, () => {
     server.removeListener('error', onError);
+    const publicHttpOrigin = getPublicHttpOrigin({ useHttps, port });
 
     logger.info('============================================');
     logger.info('Production service started successfully 🚀 ✅');
-    logger.info(`URL: ${useHttps ? 'https' : 'http'}://localhost:${port}`);
-    logger.info(`API docs: ${useHttps ? 'https' : 'http'}://localhost:${port}/docs`);
-    logger.info(`OpenAPI JSON: ${useHttps ? 'https' : 'http'}://localhost:${port}/docs/openapi.json`);
+    logger.info(`URL: ${publicHttpOrigin}`);
+    logger.info(`API docs: ${publicHttpOrigin}/docs`);
+    logger.info(`OpenAPI JSON: ${publicHttpOrigin}/docs/openapi.json`);
     logger.info(`Upload directory: ${uploadDir}`);
     logger.info(`Show record directory: ${showRecordDir}`);
     logger.info(`Recording directory: ${recordingDir}`);
@@ -284,4 +290,18 @@ function startServer() {
   });
 }
 
-startServer();
+async function bootstrap() {
+  await maybeRenewCertificateOnStartup({
+    projectRoot,
+    logger,
+  });
+
+  const server = createServerInstance();
+  initWebSocket(server);
+  startServer(server);
+}
+
+bootstrap().catch((error) => {
+  logger.error(error instanceof Error ? error : new Error(String(error)), 'server.bootstrap');
+  process.exit(1);
+});

@@ -5,6 +5,10 @@ export async function fetchMobileLinks() {
   return await apiGet(API_ENDPOINTS.mobile.links)
 }
 
+export async function fetchDnsStatus() {
+  return await apiGet(API_ENDPOINTS.dns.status)
+}
+
 export async function fetchUserSettings() {
   return await apiGet(API_ENDPOINTS.settings.user)
 }
